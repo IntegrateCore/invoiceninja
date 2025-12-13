@@ -2,16 +2,17 @@
 
 return [
 
-    'web_url' => 'https://www.invoiceninja.com',
+    'web_url' => 'https://integratecore.net',
     'admin_token' => env('NINJA_ADMIN_TOKEN', ''),
     'license_url' => 'https://app.invoiceninja.com',
     'react_url' => env('REACT_URL', env('APP_URL', '')),
     'production' => env('NINJA_PROD', false),
     'license' => env('NINJA_LICENSE', ''),
     'version_url' => 'https://pdf.invoicing.co/api/version',
-    'app_name' => env('APP_NAME', 'Invoice Ninja'),
+    'app_name' => env('APP_NAME', 'IntegrateCore ' . date('Y')),
+    'brand_name' => env('APP_BRAND', 'IntegrateCore ' . date('Y')),
     'app_env' => env('APP_ENV', 'selfhosted'),
-    'app_logo' => env('APP_LOGO', 'https://invoicing.co/images/new_logo.png'),
+    'app_logo' => env('APP_LOGO', (env('APP_URL') ? rtrim(env('APP_URL'), '/') : '') . '/images/logo.png'),
     'ninja_client_portal' => env('NINJA_CLIENT_PORTAL', 'https://invoiceninja.invoicing.co'),
     'debug_enabled' => env('APP_DEBUG', false),
     'require_https' => env('REQUIRE_HTTPS', true),
@@ -102,7 +103,7 @@ return [
     'contact' => [
         'email' => env('MAIL_FROM_ADDRESS'),
         'from_name' => env('MAIL_FROM_NAME'),
-        'ninja_official_contact' => env('NINJA_OFFICIAL_CONTACT', 'contact@invoiceninja.com'),
+        'ninja_official_contact' => env('NINJA_OFFICIAL_CONTACT', 'contact@integratecore.net'),
     ],
     'cached_tables' => [
         'banks' => App\Models\Bank::class,

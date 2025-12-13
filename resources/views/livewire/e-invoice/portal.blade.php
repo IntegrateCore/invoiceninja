@@ -6,7 +6,7 @@
         <div class="w-7/8 mr-auto">
             <h2 class="text-2xl font-semibold text-gray-800">E-Invoice Beta Phase</h2>
             <p class="py-2">Hey there!</p>
-            <p class="py-2">Thanks for joining us on our pilot program for e-invoicing for self hosted users. Our aim is to allow you to send your einvoices through the PEPPOL network via Invoice Ninja.</p>
+            <p class="py-2">Thanks for joining us on our pilot program for e-invoicing for self hosted users. Our aim is to allow you to send your einvoices through the PEPPOL network via {{ config('ninja.brand_name') }}.</p>
             <p class="py-2">Our hosted servers will proxy your einvoices into the PEPPOL network for you, and also route einvoices back to you via Webhooks.</p>
             <h3 class="text-2xl font-semibold text-gray-800 py-4">Configuration:</h3>
             <p class="py-2">To start sending einvoices via the PEPPOL network, you are required to create a Legal Entity ID, this will be your network address in the PEPPOL network. The tabled data below is what will be used to register your legal entity, please confirm the details are correct prior to registering.</p>

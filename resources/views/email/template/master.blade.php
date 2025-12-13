@@ -280,7 +280,7 @@
                                                             <tr>
                                                                 <td style="padding-right: 0px;padding-left: 0px;" align="center">
 
-                                                                    <img align="center" border="0" src="{{ asset('images/invoiceninja-black-logo-2.png') }}" alt="Image" title="Image" style="outline: none;text-decoration: none;-ms-interpolation-mode: bicubic;clear: both;display: inline-block !important;border: none;height: auto;float: none;width: 34%;max-width: 163.2px; {{ $design == 'dark' ? 'filter: invert(100%);' : '' }}" width="163.2"/>
+                                                                    <img align="center" border="0" src="{{ asset('images/integratecore-icon.png') }}" alt="{{ config('ninja.brand_name') }} logo" title="{{ config('ninja.brand_name') }}" style="outline: none;text-decoration: none;-ms-interpolation-mode: bicubic;clear: both;display: inline-block !important;border: none;height: auto;float: none;width: 28%;max-width: 140px; {{ $design == 'dark' ? 'filter: invert(100%);' : '' }}" width="140"/>
 
                                                                 </td>
                                                             </tr>

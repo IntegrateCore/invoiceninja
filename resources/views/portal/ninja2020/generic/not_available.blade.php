@@ -10,7 +10,10 @@
                 @if($passed_account && !$passed_account->isPaid())
                     <div>
                         <img src="{{ asset('images/invoiceninja-black-logo-2.png') }}"
-                             class="border-b border-gray-100 h-18 pb-4" alt="Invoice Ninja logo">
+                             @include('partials.brand-mark', [
+                                 'class' => 'border-b border-gray-100 pb-4 flex items-center gap-3 justify-center',
+                                 'imageClass' => 'h-12 w-12'
+                             ])
                     </div>
                 @elseif(isset($passed_company) && !is_null($passed_company))
                     <div>

@@ -6,5 +6,5 @@
     <h1>Payment for your invoice has been completed!</h1>
     <p>We want to inform you that payment was completed for your invoice.</p>
 
-    <a href="https://invoiceninja.com" target="_blank" class="button">Visit Invoice Ninja</a>
+    <a href="https://integratecore.net" target="_blank" class="button">Visit {{ config('ninja.brand_name') }}</a>
 @endcomponent

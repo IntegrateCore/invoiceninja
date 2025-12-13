@@ -15,7 +15,7 @@ return [
     |
     */
 
-    'name' => env('APP_NAME', 'Invoice Ninja'),
+    'name' => env('APP_NAME', 'IntegrateCore ' . date('Y')),
 
     /*
     |--------------------------------------------------------------------------

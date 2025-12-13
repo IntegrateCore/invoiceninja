@@ -813,7 +813,7 @@ Ensure the default browser behavior of the `hidden` attribute.
 
 .border-primary-blue{
   --tw-border-opacity: 1;
-  border-color: rgb(0 145 234 / var(--tw-border-opacity));
+  border-color: rgb(19 153 154 / var(--tw-border-opacity));
 }
 
 .border-\[transparent\]{
@@ -832,7 +832,7 @@ Ensure the default browser behavior of the `hidden` attribute.
 
 .bg-secondary-dark{
   --tw-bg-opacity: 1;
-  background-color: rgb(73 68 68 / var(--tw-bg-opacity));
+  background-color: rgb(28 38 43 / var(--tw-bg-opacity));
 }
 
 .bg-white{
@@ -842,29 +842,29 @@ Ensure the default browser behavior of the `hidden` attribute.
 
 .bg-primary-blue{
   --tw-bg-opacity: 1;
-  background-color: rgb(0 145 234 / var(--tw-bg-opacity));
+  background-color: rgb(19 153 154 / var(--tw-bg-opacity));
 }
 
 .bg-primary-blue\/\[\.05\]{
-  background-color: rgb(0 145 234 / .05);
+  background-color: rgb(19 153 154 / .05);
 }
 
 .bg-primary-grey{
   --tw-bg-opacity: 1;
-  background-color: rgb(229 229 229 / var(--tw-bg-opacity));
+  background-color: rgb(244 247 247 / var(--tw-bg-opacity));
 }
 
 .bg-primary-blue\/50{
-  background-color: rgb(0 145 234 / 0.5);
+  background-color: rgb(19 153 154 / 0.5);
 }
 
 .bg-primary-blue\/5{
-  background-color: rgb(0 145 234 / 0.05);
+  background-color: rgb(19 153 154 / 0.05);
 }
 
 .bg-\[\#F2F9FE\]{
   --tw-bg-opacity: 1;
-  background-color: rgb(242 249 254 / var(--tw-bg-opacity));
+  background-color: rgb(244 247 247 / var(--tw-bg-opacity));
 }
 
 .bg-clip-padding{
@@ -988,7 +988,7 @@ Ensure the default browser behavior of the `hidden` attribute.
   text-align: center;
 }
 
-.font-\[\'Open_Sans\'\]{
+.font-\[\'Montserrat\'\]{
   font-family: 'Open Sans';
 }
 
@@ -1093,7 +1093,7 @@ Ensure the default browser behavior of the `hidden` attribute.
 
 .text-primary-blue{
   --tw-text-opacity: 1;
-  color: rgb(0 145 234 / var(--tw-text-opacity));
+  color: rgb(19 153 154 / var(--tw-text-opacity));
 }
 
 .text-dark-grey{
@@ -1113,7 +1113,7 @@ Ensure the default browser behavior of the `hidden` attribute.
 
 .text-primary-dark{
   --tw-text-opacity: 1;
-  color: rgb(46 44 44 / var(--tw-text-opacity));
+  color: rgb(28 38 43 / var(--tw-text-opacity));
 }
 
 .text-gray{
@@ -1287,7 +1287,7 @@ Ensure the default browser behavior of the `hidden` attribute.
 
 .focus\:border-primary-blue:focus{
   --tw-border-opacity: 1;
-  border-color: rgb(0 145 234 / var(--tw-border-opacity));
+  border-color: rgb(19 153 154 / var(--tw-border-opacity));
 }
 
 .focus\:outline-none:focus{
@@ -1297,7 +1297,7 @@ Ensure the default browser behavior of the `hidden` attribute.
 
 .peer:checked ~ .peer-checked\:bg-primary-blue{
   --tw-bg-opacity: 1;
-  background-color: rgb(0 145 234 / var(--tw-bg-opacity));
+  background-color: rgb(19 153 154 / var(--tw-bg-opacity));
 }
 
 .peer:checked ~ .peer-checked\:text-gray{
@@ -1581,7 +1581,7 @@ Ensure the default browser behavior of the `hidden` attribute.
                 </h2>
                 <ul class="list-checkmark relative z-10">
                     <li class="mb-[5px]">Unlimited Clients & Invoices & Quotes</li>
-                    <li class="mb-[5px]">Remove "Created by Invoice Ninja"</li>
+                    <li class="mb-[5px]">Remove "Created by {{ config('ninja.brand_name') }}"</li>
                     <li class="mb-[5px]">Send Invoice Emails via Gmail or MSN Accounts</li>
                     <li class="mb-[5px]">11 Professional Invoice & Quote Template Designs</li>
                     <li class="mb-[5px]">Branded URL Option: "YourBrand".Invoicing.co"</li>
@@ -1640,7 +1640,7 @@ Ensure the default browser behavior of the `hidden` attribute.
                             <h5 class="text-base font-bold leading-[1.36em] text-primary-dark uppercase mb-4">All Free Features +</h5>
                             <ul class="list-checkmark list-checkmark_green relative z-10">
                               <li class="mb-[5px]">Unlimited Clients & Invoices</li>
-                              <li class="mb-[5px]">Remove "Created by Invoice Ninja"</li>
+                              <li class="mb-[5px]">Remove "Created by {{ config('ninja.brand_name') }}"</li>
                               <li class="mb-[5px]">Email Invoices via Gmail & MSN</li>
                               <li class="mb-[5px]">Branded URL: 'YourSite".Invoicing.co'</li>
                               <li class="mb-[5px]">11 Professional Invoice Templates</li>
@@ -1736,7 +1736,7 @@ Ensure the default browser behavior of the `hidden` attribute.
                             <h5 class="text-base font-bold leading-[1.36em] text-primary-dark uppercase mb-4">All Free Features +</h5>
                             <ul class="list-checkmark list-checkmark_green relative z-10">
                               <li class="mb-[5px]">Unlimited Clients & Invoices</li>
-                              <li class="mb-[5px]">Remove "Created by Invoice Ninja"</li>
+                              <li class="mb-[5px]">Remove "Created by {{ config('ninja.brand_name') }}"</li>
                               <li class="mb-[5px]">Email Invoices via Gmail & MSN</li>
                               <li class="mb-[5px]">Branded URL: 'YourSite".Invoicing.co'</li>
                               <li class="mb-[5px]">11 Professional Invoice Templates</li>

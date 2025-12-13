@@ -55,9 +55,9 @@
 
         <!-- Title -->
         @if(isset($account) && !$account->isPaid())
-            <title>@yield('meta_title', '') — Invoice Ninja</title>
+            <title>@yield('meta_title', '') - {{ config('ninja.brand_name') }}</title>
         @elseif(isset($company) && !is_null($company))
-            <title>@yield('meta_title', '') — {{ $company->present()->name() }}</title>
+            <title>@yield('meta_title', '') - {{ $company->present()->name() }}</title>
         @else
             <title>@yield('meta_title', '')</title>
         @endif
@@ -75,15 +75,19 @@
         @vite('resources/js/app.js')
 
         <!-- Fonts -->
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
         <style>
-            @font-face {
-              font-family: 'Open Sans';
-              font-style: normal;
-              font-weight: 400;
-              font-stretch: 100%;
-              font-display: swap;
-              src: url( {{asset('css/memSYaGs126MiZpBA-UvWbX2vVnXBbObj2OVZyOOSr4dVJWUgsjZ0B4gaVI.woff2')}}) format('woff2');
-              unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+            :root {
+                --ic-primary: #13999A;
+                --ic-secondary: #1C262B;
+                --ic-accent: #0F7E7F;
+            }
+
+            body {
+                font-family: 'Montserrat', 'Segoe UI', Arial, sans-serif;
+                color: var(--ic-secondary);
             }
         </style>
 

@@ -23,7 +23,7 @@
     @endif
 
     <meta charset="utf-8">
-    <title>@yield('meta_title', 'Invoice Ninja') | {{ config('app.name') }}</title>
+    <title>@yield('meta_title', config('ninja.brand_name')) | {{ config('app.name') }}</title>
     <meta name="description" content="@yield('meta_description')"/>
     @if(auth()->guard('contact')->user() && !auth()->guard('contact')->user()->user->account->isPaid())
         <link href="{{ asset('favicon.png') }}" rel="shortcut icon" type="image/png">
@@ -32,6 +32,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/simple-line-icons/2.4.1/css/simple-line-icons.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.css">
     <link rel="canonical" href="{{ config('ninja.app_url') }}/{{ request()->path() }}"/>
@@ -42,15 +45,21 @@
     <script src=" {{ mix('/js/coreui.min.js') }}"></script>
     <script defer src="/js/lang.js"></script>
     <style type="text/css">
+        body {
+            font-family: 'Montserrat', 'Segoe UI', Arial, sans-serif;
+            background-color: #F4F7F7;
+            color: #1C262B;
+        }
+
         .bg-primary2 {
-         background-color: #167090 !important;
+         background-color: #13999A !important;
          color: #fff;
        }
    
         a.bg-primary2:hover, a.bg-primary:focus,
         button.bg-primary:hover,
         button.bg-primary:focus {
-            background-color: #56b3d4 !important;
+            background-color: #0F7E7F !important;
         }
 
     </style>

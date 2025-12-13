@@ -1,11 +1,11 @@
 {
-    "name": "Invoice Ninja",
-    "short_name": "Invoice Ninja",
+    "name": "IntegrateCore",
+    "short_name": "IntegrateCore",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "Invoice Clients, Track Work-Time, Get Paid Online.",
+    "background_color": "#13999A",
+    "theme_color": "#13999A",
+    "description": "IntegrateCore — invoice clients, track work-time, and get paid online.",
     "orientation": "portrait-primary",
     "prefer_related_applications": true,
     "related_applications": [

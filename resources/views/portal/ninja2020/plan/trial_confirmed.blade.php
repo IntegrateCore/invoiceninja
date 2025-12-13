@@ -815,7 +815,7 @@ Ensure the default browser behavior of the `hidden` attribute.
 
 .border-primary-blue{
   --tw-border-opacity: 1;
-  border-color: rgb(0 145 234 / var(--tw-border-opacity));
+  border-color: rgb(19 153 154 / var(--tw-border-opacity));
 }
 
 .border-\[transparent\]{
@@ -834,7 +834,7 @@ Ensure the default browser behavior of the `hidden` attribute.
 
 .bg-secondary-dark{
   --tw-bg-opacity: 1;
-  background-color: rgb(73 68 68 / var(--tw-bg-opacity));
+  background-color: rgb(28 38 43 / var(--tw-bg-opacity));
 }
 
 .bg-white{
@@ -844,29 +844,29 @@ Ensure the default browser behavior of the `hidden` attribute.
 
 .bg-primary-blue{
   --tw-bg-opacity: 1;
-  background-color: rgb(0 145 234 / var(--tw-bg-opacity));
+  background-color: rgb(19 153 154 / var(--tw-bg-opacity));
 }
 
 .bg-primary-blue\/\[\.05\]{
-  background-color: rgb(0 145 234 / .05);
+  background-color: rgb(19 153 154 / .05);
 }
 
 .bg-primary-grey{
   --tw-bg-opacity: 1;
-  background-color: rgb(229 229 229 / var(--tw-bg-opacity));
+  background-color: rgb(244 247 247 / var(--tw-bg-opacity));
 }
 
 .bg-primary-blue\/50{
-  background-color: rgb(0 145 234 / 0.5);
+  background-color: rgb(19 153 154 / 0.5);
 }
 
 .bg-primary-blue\/5{
-  background-color: rgb(0 145 234 / 0.05);
+  background-color: rgb(19 153 154 / 0.05);
 }
 
 .bg-\[\#F2F9FE\]{
   --tw-bg-opacity: 1;
-  background-color: rgb(242 249 254 / var(--tw-bg-opacity));
+  background-color: rgb(244 247 247 / var(--tw-bg-opacity));
 }
 
 .bg-clip-padding{
@@ -990,7 +990,7 @@ Ensure the default browser behavior of the `hidden` attribute.
   text-align: center;
 }
 
-.font-\[\'Open_Sans\'\]{
+.font-\[\'Montserrat\'\]{
   font-family: 'Open Sans';
 }
 
@@ -1095,7 +1095,7 @@ Ensure the default browser behavior of the `hidden` attribute.
 
 .text-primary-blue{
   --tw-text-opacity: 1;
-  color: rgb(0 145 234 / var(--tw-text-opacity));
+  color: rgb(19 153 154 / var(--tw-text-opacity));
 }
 
 .text-dark-grey{
@@ -1115,7 +1115,7 @@ Ensure the default browser behavior of the `hidden` attribute.
 
 .text-primary-dark{
   --tw-text-opacity: 1;
-  color: rgb(46 44 44 / var(--tw-text-opacity));
+  color: rgb(28 38 43 / var(--tw-text-opacity));
 }
 
 .text-gray{
@@ -1433,7 +1433,7 @@ Ensure the default browser behavior of the `hidden` attribute.
 @endpush
 
 <main
-  class="font-['Open_Sans'] text-[15px] font-normal leading-[1.75em] flex-1 relative z-0 overflow-y-auto pt-[20px] pl-[18px] pr-[18px] pb-[20px] focus:outline-none"
+  class="font-['Montserrat'] text-[15px] font-normal leading-[1.75em] flex-1 relative z-0 overflow-y-auto pt-[20px] pl-[18px] pr-[18px] pb-[20px] focus:outline-none"
   tabindex="0"
 >
   <div class="min-h-[450px] flex justify-stretch overflow-hidden">
