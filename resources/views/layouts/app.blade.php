@@ -10,7 +10,7 @@
     <title>{{ config('app.name', 'Laravel') }}</title>
 
     <!-- Scripts -->
-    @vite('resources/js/app.js')
+    <!-- @vite('resources/js/app.js') -->
 
     <!-- Fonts -->
     {{-- <link rel="dns-prefetch" href="https://fonts.gstatic.com"> --}}
@@ -28,7 +28,7 @@
         </style>
 
     <!-- Styles -->
-    @vite('resources/sass/app.scss')
+    <!-- @vite('resources/sass/app.scss') -->
 </head>
 <body>
     <div id="app">
