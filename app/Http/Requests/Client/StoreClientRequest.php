@@ -97,6 +97,8 @@ class StoreClientRequest extends Request
             }
         }];
 
+        $rules['consulting_hours_balance'] = 'bail|nullable|sometimes|numeric';
+
         $rules['settings.currency_id'] = 'required|exists:currencies,id';
 
         return $rules;

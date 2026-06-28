@@ -30,6 +30,7 @@ class ClientFactory extends Factory
             'private_notes' => $this->faker->text(200),
             'balance' => 0,
             'paid_to_date' => 0,
+            'consulting_hours_balance' => 0,
             'vat_number' => $this->faker->numberBetween(123456789, 987654321),
             'id_number' => $this->faker->iban(),
             'custom_value1' => $this->faker->date(),

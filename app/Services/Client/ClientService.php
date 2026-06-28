@@ -135,6 +135,17 @@ class ClientService
         return $this;
     }
 
+    public function updateConsultingHoursBalance(float $amount)
+    {
+        DB::connection(config('database.default'))->transaction(function () use ($amount) {
+            $this->client = Client::withTrashed()->where('id', $this->client->id)->lockForUpdate()->first();
+            $this->client->consulting_hours_balance = round((float) $this->client->consulting_hours_balance + $amount, 6);
+            $this->client->saveQuietly();
+        }, 2);
+
+        return $this;
+    }
+
 
     public function adjustCreditBalance(mixed $amount)
     {
