@@ -1,2 +1,2 @@
 {{-- Inject the Admin (React) bundle --}}
-@vite('public/build-admin/assets/app.js')
+@vite('Resources/assets/js/app.js')
