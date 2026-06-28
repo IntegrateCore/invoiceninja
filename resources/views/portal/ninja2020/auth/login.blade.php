@@ -12,30 +12,29 @@
 
 @section('body')
     <div class="grid lg:grid-cols-3 mx-6 md:mx-0">
-        @if($account && !$account->isPaid())
-            <div class="hidden lg:block col-span-1 bg-red-100 h-screen">
-                <img src="{{ asset('images/client-portal-new-image.jpg') }}"
-                     class="w-full h-screen object-cover"
-                     alt="Background image">
+        <div class="hidden lg:flex col-span-1 h-screen items-center justify-center relative overflow-hidden"
+             style="background: linear-gradient(160deg, #13999A 0%, #0F7E7F 55%, #1C262B 100%);">
+            <div class="absolute inset-0 opacity-10"
+                 style="background-image: radial-gradient(circle at top right, rgba(255,255,255,.35), transparent 28%), radial-gradient(circle at bottom left, rgba(255,255,255,.2), transparent 24%);">
             </div>
-        @endif
+            <div class="relative text-center px-10 text-white">
+                <img src="{{ asset('images/integratecore-icon.png') }}"
+                     class="mx-auto w-24 h-24 mb-6"
+                     alt="{{ config('ninja.brand_name') }} logo">
+                <div class="text-4xl font-semibold tracking-tight">{{ config('ninja.brand_name') }}</div>
+                <div class="mt-3 text-sm uppercase tracking-widest text-white/70">Client portal</div>
+            </div>
+        </div>
 
-        <div class="{{ $account && !$account->isPaid() ? 'col-span-2' : 'col-span-3' }} h-screen flex">
+        <div class="col-span-3 lg:col-span-2 h-screen flex">
             <div class="m-auto md:w-1/2 lg:w-1/4">
-                @if($account && !$account->isPaid())
-                    <div>
-                        @include('partials.brand-mark', [
-                            'class' => 'border-b border-gray-100 pb-4 flex items-center gap-3 justify-center',
-                            'imageClass' => 'h-12 w-12',
-                            'imageId' => 'company_logo'
-                        ])
-                    </div>
-                @elseif(isset($company) && !is_null($company))
-                    <div>
-                        <img src="{{ $company->present()->logo()  }}"
-                             class="mx-auto border-b border-gray-100 h-18 pb-4" alt="{{ $company->present()->name() }} logo">
-                    </div>
-                @endif
+                <div>
+                    @include('partials.brand-mark', [
+                        'class' => 'border-b border-gray-100 pb-4 flex items-center gap-3 justify-center',
+                        'imageClass' => 'h-12 w-12',
+                        'imageId' => 'company_logo'
+                    ])
+                </div>
 
                 <div class="flex flex-col">
                     <h1 class="text-center text-3xl">{{ ctrans('texts.client_portal') }}</h1>
@@ -72,7 +71,7 @@
                             @enderror
                         </div>
                         <div class="mt-5">
-                            <button id="loginBtn" class="button button-primary button-block bg-blue-600">
+                            <button id="loginBtn" class="button button-primary button-block bg-primary">
                                 {{ trans('texts.login') }}
                             </button>
                         </div>

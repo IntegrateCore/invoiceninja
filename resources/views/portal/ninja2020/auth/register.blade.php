@@ -5,19 +5,12 @@
 
     <div class="grid lg:grid-cols-12 py-8">
         <div class="col-span-12 lg:col-span-8 lg:col-start-3 xl:col-span-6 xl:col-start-4 px-6">
-            @if($register_company->account && !$register_company->account->isPaid())
             <div class="flex justify-center">
-                    @include('partials.brand-mark', [
-                        'class' => 'border-b border-gray-100 pb-4 flex items-center gap-3 justify-center',
-                        'imageClass' => 'h-12 w-12'
-                    ])
-                </div>
-            @elseif(isset($register_company) && !is_null($register_company))
-            <div class="flex justify-center">
-                    <img src="{{ $register_company->present()->logo()  }}"
-                         class="mx-auto border-b border-gray-100 h-18 pb-4" alt="{{ $register_company->present()->name() }} logo">
-                </div>
-            @endif
+                @include('partials.brand-mark', [
+                    'class' => 'border-b border-gray-100 pb-4 flex items-center gap-3 justify-center',
+                    'imageClass' => 'h-12 w-12'
+                ])
+            </div>
             <h1 class="text-center text-3xl mt-8">{{ ctrans('texts.register') }}</h1>
             <p class="block text-center text-gray-600">{{ ctrans('texts.register_label') }}</p>
 
@@ -135,7 +128,7 @@
 
                 <div class="flex justify-between items-center mt-8">
 
-                    <a href="{{route('client.login')}}" class="button button-info bg-emerald-600 text-white">{{ ctrans('texts.login_label') }}</a>
+                    <a href="{{route('client.login')}}" class="button button-info bg-primary text-white">{{ ctrans('texts.login_label') }}</a>
 
                     <span class="inline-flex items-center" x-data="{ terms_of_service: false, privacy_policy: false }">
                             @if(!empty($register_company->settings->client_portal_terms) || !empty($register_company->settings->client_portal_privacy_policy))
@@ -164,7 +157,7 @@
                         </div>
                     @endif
                     
-                    <button class="button button-primary bg-blue-600" :disabled={{ $submitsForm == 'true' ? 'isSubmitted' : 'busy'}}>
+                    <button class="button button-primary bg-primary" :disabled={{ $submitsForm == 'true' ? 'isSubmitted' : 'busy'}}>
                         {{ ctrans('texts.register')}}
                     </button>
 
