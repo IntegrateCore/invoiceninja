@@ -1,9 +1,17 @@
 <?php
-
+/**
+ * Invoice Ninja (https://invoiceninja.com).
+ *
+ * @link https://github.com/invoiceninja/invoiceninja source repository
+ *
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
+ *
+ * @license https://www.elastic.co/licensing/elastic-license
+ */
 namespace App\PaymentDrivers\GoCardless;
 
 use App\Exceptions\PaymentFailed;
-use App\Jobs\Mail\PaymentFailureMailer;
+
 use App\Jobs\Util\SystemLogger;
 use App\Models\GatewayType;
 use App\Models\Payment;
@@ -57,7 +65,7 @@ class InstantBankPay implements MethodInterface, LivewireMethodInterface
             $billing_request = $this->go_cardless->gateway->billingRequests()->create([
                 'params' => [
                     'payment_request' => [
-                        'description' => ctrans('texts.invoices').': '.collect($data['invoices'])->pluck('invoice_number'),
+                        'description' => ctrans('texts.invoices') . ': ' . collect($data['invoices'])->pluck('invoice_number'),
                         'amount' => (string) $data['amount_with_fee'] * 100,
                         'currency' => $this->go_cardless->client->getCurrencyCode(),
                     ],
@@ -205,7 +213,7 @@ class InstantBankPay implements MethodInterface, LivewireMethodInterface
      */
     public function processUnsuccessfulPayment(\GoCardlessPro\Resources\Payment $payment): void
     {
-        PaymentFailureMailer::dispatch($this->go_cardless->client, $payment->status, $this->go_cardless->client->company, $this->go_cardless->payment_hash->data->amount_with_fee);
+        $this->go_cardless->sendFailureMail("Instant Bank Pay payment failed with status: {$payment->status}");
 
         $message = [
             'server_response' => $payment,

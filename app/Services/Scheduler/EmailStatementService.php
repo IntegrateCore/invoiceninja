@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -24,12 +24,13 @@ class EmailStatementService
     use MakesHash;
     use MakesDates;
 
-    public function __construct(public Scheduler $scheduler)
-    {
-    }
+    public function __construct(public Scheduler $scheduler) {}
 
     public function run()
     {
+        //calculate next run dates;
+        $this->scheduler->calculateNextRun();
+
         $query = Client::query()
                 ->where('company_id', $this->scheduler->company_id)
                 ->where('is_deleted', 0);
@@ -45,13 +46,15 @@ class EmailStatementService
             ->each(function ($_client) {
 
                 //work out the date range
-                $statement_properties = $this->calculateStatementProperties($_client);
+                try {
+                    $statement_properties = $this->calculateStatementProperties($_client);
+                    $_client->service()->statement($statement_properties, true);
+                }
+                catch (\Throwable $th) {
+                    nlog("EXCEPTION:: EmailStatementService:: could not email statement for client {$_client->id} :: " . $th->getMessage());
+                }
 
-                $_client->service()->statement($statement_properties, true);
             });
-
-        //calculate next run dates;
-        $this->scheduler->calculateNextRun();
 
     }
 
@@ -95,7 +98,7 @@ class EmailStatementService
             EmailStatement::ALL_TIME => [
                 $client->invoices()->selectRaw('MIN(invoices.date) as start_date')->pluck('start_date')->first()
                     ?: Carbon::now()->format('Y-m-d'),
-                Carbon::now()->format('Y-m-d')
+                Carbon::now()->format('Y-m-d'),
             ],
             EmailStatement::CUSTOM_RANGE => [$this->scheduler->parameters['start_date'], $this->scheduler->parameters['end_date']],
             default => [now()->startOfDay()->firstOfMonth()->format('Y-m-d'), now()->startOfDay()->lastOfMonth()->format('Y-m-d')],

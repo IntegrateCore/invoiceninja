@@ -69,7 +69,7 @@ class QuoteItemExport extends BaseExport
                             ->whereHas('client', function ($q) {
                                 $q->where('is_deleted', false);
                             })
-                            ->with('client')->where('company_id', $this->company->id);
+                            ->with('client', 'location')->where('company_id', $this->company->id);
 
         if (!$this->input['include_deleted'] ?? false) {
             $query->where('is_deleted', 0);
@@ -104,7 +104,7 @@ class QuoteItemExport extends BaseExport
             return ['identifier' => $key, 'display_value' => $headerdisplay[$value]];
         })->toArray();
 
-        $query->cursor()
+        $this->streamQuery($query)
             ->each(function ($resource) {
 
                 /** @var \App\Models\Quote $resource */
@@ -136,7 +136,7 @@ class QuoteItemExport extends BaseExport
         $this->csv->insertOne($this->buildHeader());
 
 
-        $query->cursor()
+        $this->streamQuery($query)
             ->each(function ($quote) {
 
                 /** @var \App\Models\Quote $quote */
@@ -151,13 +151,13 @@ class QuoteItemExport extends BaseExport
 
     private function filterItems(array $items): array
     {
-        
+
         //if we have product filters in place, we will also need to filter the items at this level:
         if (isset($this->input['product_key'])) {
-            
+
             $products = str_getcsv($this->input['product_key'], ',', "'");
 
-            $products = array_map(function($product) {
+            $products = array_map(function ($product) {
                 return trim($product, "'");
             }, $products);
 
@@ -210,7 +210,7 @@ class QuoteItemExport extends BaseExport
         }
     }
 
-    private function buildRow(Quote $quote): array
+    protected function buildRow(Quote $quote): array
     {
         $transformed_quote = $this->quote_transformer->transform($quote);
 
@@ -249,6 +249,9 @@ class QuoteItemExport extends BaseExport
         }
 
 
+        if (in_array('quote.subtotal', $this->input['report_keys'])) {
+            $entity['quote.subtotal'] = $quote->calc()->getSubTotal();
+        }
 
         return $entity;
     }

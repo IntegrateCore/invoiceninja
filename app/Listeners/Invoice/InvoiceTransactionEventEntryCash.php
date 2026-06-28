@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -16,6 +16,8 @@ use App\Models\Invoice;
 use App\Models\TransactionEvent;
 use Illuminate\Support\Collection;
 use App\DataMapper\TransactionEventMetadata;
+use App\Services\Report\TaxPeriod\TaxClassificationCalculator;
+use App\Services\Report\TaxPeriod\SalesBreakdownCalculator;
 
 /**
  * Handles entries for vanilla payments on an invoice.
@@ -31,37 +33,50 @@ class InvoiceTransactionEventEntryCash
      * Handle the event.
      *
      */
-    public function run($invoice, $start_date, $end_date)
+    public function run(?Invoice $invoice, string $start_date, string $end_date): void
     {
 
-        if(!$invoice)
+        if (!$invoice || $invoice->transaction_events()
+            ->where('event_id', TransactionEvent::PAYMENT_CASH)
+            ->where('period', $end_date)
+            ->exists()) {
             return;
-        
-        $this->setPaidRatio($invoice);
-        
-        $this->payments = $invoice->payments->flatMap(function ($payment) use ($start_date, $end_date) {
-            return $payment->invoices()->get()->map(function ($invoice) use ($payment) {
-                return [
-                    'number' => $payment->number,
-                    'amount' => $invoice->pivot->amount,
-                    'refunded' => $invoice->pivot->refunded,
-                    'date' => $invoice->pivot->created_at->format('Y-m-d'),
-                ];
-            })->filter(function ($payment) use ($start_date, $end_date) {
-                // Filter payments where the pivot created_at is within the date boundaries
-                return \Carbon\Carbon::parse($payment['date'])->isBetween($start_date, $end_date);
-            });
-        });
+        }
 
+        $this->payments = $invoice->payments->map(function ($payment) use ($invoice, $start_date, $end_date) {
+            
+            /** @var mixed $pivot */
+            $pivot = $payment->invoices()->where('paymentable_id', $invoice->id)->first()?->pivot;
+
+            if (!$pivot) {
+                return null;
+            }
+
+            $date = $pivot->created_at->format('Y-m-d');
+
+            if (!\Carbon\Carbon::parse($date)->isBetween($start_date, $end_date)) {
+                return null;
+            }
+
+            return [
+                'number' => $payment->number,
+                'amount' => $pivot->amount,
+                'refunded' => $pivot->refunded,
+                'date' => $date,
+            ];
+        })->filter();
+
+        $this->setPaidRatio($invoice);
 
         TransactionEvent::create([
+            'company_id' => $invoice->company_id,
             'invoice_id' => $invoice->id,
             'client_id' => $invoice->client_id,
             'client_balance' => $invoice->client->balance,
             'client_paid_to_date' => $invoice->client->paid_to_date,
             'client_credit_balance' => $invoice->client->credit_balance,
             'invoice_balance' => $invoice->balance ?? 0,
-            'invoice_amount' => $invoice->amount ?? 0  ,
+            'invoice_amount' => $invoice->amount ?? 0,
             'invoice_partial' => $invoice->partial ?? 0,
             'invoice_paid_to_date' => $invoice->paid_to_date ?? 0,
             'invoice_status' => $invoice->is_deleted ? 7 : $invoice->status_id,
@@ -82,12 +97,14 @@ class InvoiceTransactionEventEntryCash
             return $this;
         }
 
-        $this->paid_ratio = $invoice->paid_to_date / $invoice->amount;
+        $periodPaid = $this->payments->sum('amount') - $this->payments->sum('refunded');
+
+        $this->paid_ratio = $periodPaid / $invoice->amount;
 
         return $this;
     }
 
-    private function getMetadata($invoice)
+    private function getMetadata(Invoice $invoice): TransactionEventMetadata
     {
 
         $calc = $invoice->calc();
@@ -108,10 +125,12 @@ class InvoiceTransactionEventEntryCash
             ];
             $details[] = $tax_detail;
         }
-        
+
         return new TransactionEventMetadata([
             'tax_report' => [
                 'tax_details' => $details,
+                'tax_details_by_classification' => TaxClassificationCalculator::calculate($invoice, $this->paid_ratio, $details),
+                'sales_breakdown' => SalesBreakdownCalculator::calculate($invoice, $this->paid_ratio),
                 'payment_history' => $this->payments->toArray(),
                 'tax_summary' => [
                     'tax_amount' => $invoice->total_taxes * $this->paid_ratio,

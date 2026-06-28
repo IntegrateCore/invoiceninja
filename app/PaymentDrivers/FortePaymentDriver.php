@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://opensource.org/licenses/AAL
  */
@@ -17,14 +17,11 @@ use App\Models\Payment;
 use App\Models\SystemLog;
 use App\Models\GatewayType;
 use App\Models\ClientContact;
-use App\Factory\ClientFactory;
 use App\Jobs\Util\SystemLogger;
 use App\Utils\Traits\MakesHash;
 use App\PaymentDrivers\Forte\ACH;
 use Illuminate\Support\Facades\Http;
-use App\Repositories\ClientRepository;
 use App\PaymentDrivers\Forte\CreditCard;
-use App\Repositories\ClientContactRepository;
 use App\PaymentDrivers\Factory\ForteCustomerFactory;
 
 class FortePaymentDriver extends BaseDriver
@@ -104,7 +101,7 @@ class FortePaymentDriver extends BaseDriver
             $curl = curl_init();
 
             curl_setopt_array($curl, [
-                CURLOPT_URL => $forte_base_uri.'organizations/'.$forte_organization_id.'/locations/'.$forte_location_id.'/transactions',
+                CURLOPT_URL => $forte_base_uri . 'organizations/' . $forte_organization_id . '/locations/' . $forte_location_id . '/transactions',
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_ENCODING => '',
                 CURLOPT_MAXREDIRS => 10,
@@ -114,16 +111,16 @@ class FortePaymentDriver extends BaseDriver
                 CURLOPT_CUSTOMREQUEST => 'POST',
                 CURLOPT_POSTFIELDS => '{
                      "action":"reverse",
-                     "authorization_amount":'.$amount.',
-                     "original_transaction_id":"'.$payment->transaction_reference.'",
+                     "authorization_amount":' . $amount . ',
+                     "original_transaction_id":"' . $payment->transaction_reference . '",
                      "authorization_code": "9ZQ754"
               }',
                 CURLOPT_HTTPHEADER => [
-                  'Content-Type: application/json',
-                  'X-Forte-Auth-Organization-Id: '.$forte_organization_id,
-                  'Authorization: Basic '.base64_encode($forte_api_access_id.':'.$forte_secure_key)
+                    'Content-Type: application/json',
+                    'X-Forte-Auth-Organization-Id: ' . $forte_organization_id,
+                    'Authorization: Basic ' . base64_encode($forte_api_access_id . ':' . $forte_secure_key),
                 ],
-              ]);
+            ]);
 
             $response = curl_exec($curl);
             $httpcode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
@@ -267,14 +264,14 @@ class FortePaymentDriver extends BaseDriver
         $amount_with_fee = $payment_hash->data->amount_with_fee;
         $fee_total = $payment_hash->fee_total;
 
-        $data =
-        [
+        $data
+        = [
             "action" => "sale",
             "authorization_amount" => $amount_with_fee,
             "paymethod_token" => $cgt->token,
             "billing_address" => [
-            "first_name" => $this->client->present()->first_name(),
-            "last_name" => $this->client->present()->last_name()
+                "first_name" => $this->client->present()->first_name(),
+                "last_name" => $this->client->present()->last_name(),
             ],
         ];
 
@@ -424,32 +421,9 @@ class FortePaymentDriver extends BaseDriver
 
     }
 
-    public function importCustomers()
+    public function importCustomers(): void
     {
-
-        $response = $this->stubRequest()
-                    ->withQueryParameters(['page_size' => 10000])
-                    ->get("{$this->baseUri()}/organizations/{$this->getOrganisationId()}/locations/{$this->getLocationId()}/customers");
-
-        if ($response->successful()) {
-
-            foreach ($response->json()['results'] as $customer) {
-
-                $client_repo = new ClientRepository(new ClientContactRepository());
-                $factory = new ForteCustomerFactory();
-
-                $data = $factory->convertToNinja($customer, $this->company_gateway->company);
-
-                if (strlen($data['email']) == 0 || $this->getClient($data['email'])) {
-                    continue;
-                }
-
-                $client_repo->save($data, ClientFactory::create($this->company_gateway->company_id, $this->company_gateway->user_id));
-
-                //persist any payment methods here!
-            }
-        }
-
+        (new \App\PaymentDrivers\Forte\ImportCustomers($this))->run();
     }
 
 }

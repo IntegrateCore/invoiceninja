@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -107,12 +107,17 @@ class TransactionTransformer implements BankRevenueInterface
         $amount = (float) $transaction["transactionAmount"]["amount"];
         $base_type = $amount < 0 ? 'DEBIT' : 'CREDIT';
 
-        // description could be in varios places
+        // description could be in various places
         $description = '';
         if (array_key_exists('remittanceInformationStructured', $transaction)) {
             $description = $transaction["remittanceInformationStructured"];
         } elseif (array_key_exists('remittanceInformationStructuredArray', $transaction)) {
-            $description = implode('\n', $transaction["remittanceInformationStructuredArray"]);
+            $remittanceInformationStructuredArray = $transaction["remittanceInformationStructuredArray"];
+            if (array_key_exists('rawTransactionDescription', $remittanceInformationStructuredArray)) {
+                $description = $remittanceInformationStructuredArray["rawTransactionDescription"];
+            } else {
+                $description = implode('\n', $transaction["remittanceInformationStructuredArray"]);
+            }
         } elseif (array_key_exists('remittanceInformationUnstructured', $transaction)) {
             $description = $transaction["remittanceInformationUnstructured"];
         } elseif (array_key_exists('remittanceInformationUnstructuredArray', $transaction)) {
@@ -130,14 +135,14 @@ class TransactionTransformer implements BankRevenueInterface
         }
 
         // participant data
-        $participant = array_key_exists('debtorAccount', $transaction) && array_key_exists('iban', $transaction["debtorAccount"]) ?
-            $transaction['debtorAccount']['iban'] :
-            (array_key_exists('creditorAccount', $transaction) && array_key_exists('iban', $transaction["creditorAccount"]) ?
-                $transaction['creditorAccount']['iban'] : null);
-        $participant_name = array_key_exists('debtorName', $transaction) ?
-            $transaction['debtorName'] :
-            (array_key_exists('creditorName', $transaction) ?
-                $transaction['creditorName'] : null);
+        $participant = array_key_exists('debtorAccount', $transaction) && array_key_exists('iban', $transaction["debtorAccount"])
+            ? $transaction['debtorAccount']['iban']
+            : (array_key_exists('creditorAccount', $transaction) && array_key_exists('iban', $transaction["creditorAccount"])
+                ? $transaction['creditorAccount']['iban'] : null);
+        $participant_name = array_key_exists('debtorName', $transaction)
+            ? $transaction['debtorName']
+            : (array_key_exists('creditorName', $transaction)
+                ? $transaction['creditorName'] : null);
 
         $data = [
             'transaction_id' => 0,

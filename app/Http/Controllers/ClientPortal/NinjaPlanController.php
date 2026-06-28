@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -88,7 +88,7 @@ class NinjaPlanController extends Controller
 
     public function trial_confirmation(Request $request)
     {
-        $trial_started = "Trial Started @ ".now()->format('Y-m-d H:i:s');
+        $trial_started = "Trial Started @ " . now()->format('Y-m-d H:i:s');
 
         auth()->guard('contact')->user()->fill($request->only(['first_name','last_name']))->save();
 
@@ -149,6 +149,13 @@ class NinjaPlanController extends Controller
 
             /** @var \App\Models\Account $account **/
             $account = Account::where('key', auth()->guard('contact')->user()->client->custom_value2)->first();
+
+            if (! $account) {
+                return redirect()->route('client.plan');
+            }
+
+            $account_created_at = (int) $account->created_at;
+
             // $account->trial_started = now();
             // $account->trial_plan = 'pro';
             $account->plan = 'pro';
@@ -161,6 +168,13 @@ class NinjaPlanController extends Controller
             $account->trial_plan = 'pro';
             $account->created_at = now();
             $account->save();
+
+            if (class_exists(\Modules\Admin\Jobs\Account\AccountStatus::class)) {
+                \Modules\Admin\Jobs\Account\AccountStatus::dispatch(
+                    (string) $account->key,
+                    $account_created_at
+                )->afterCommit();
+            }
         }
 
         MultiDB::setDB('db-ninja-01');

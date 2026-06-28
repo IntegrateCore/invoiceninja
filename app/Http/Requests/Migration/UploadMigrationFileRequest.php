@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -42,6 +42,13 @@ class UploadMigrationFileRequest extends Request
         /* We'll skip mime validation while running tests. */
         if (app()->environment() !== 'testing') {
             $rules['migration'] = ['required', 'file', 'mimes:zip'];
+        }
+
+        // Validate all uploaded files are zip archives
+        foreach ($this->allFiles() as $key => $file) {
+            if (app()->environment() !== 'testing') {
+                $rules[$key] = ['file', 'mimes:zip'];
+            }
         }
 
         return $rules;

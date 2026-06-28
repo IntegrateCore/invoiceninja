@@ -4,6 +4,7 @@
           description: 'The hashed id of the task'
           type: string
           example: Opnel5aKBz
+          readOnly: true
         user_id:
           description: 'The hashed id of the user who created the task'
           type: string
@@ -51,11 +52,11 @@
         duration:
           description: 'The task duration in seconds'
           type: integer
-          example: '3600'
+          example: 3600
         task_status_order:
           description: 'The order of the task'
           type: integer
-          example: '4'
+          example: 4
         rate:
           description: 'The task rate'
           type: number
@@ -93,19 +94,19 @@
           description: Timestamp
           type: number
           format: integer
-          example: '1434342123'
+          example: 1434342123
           readOnly: true
         updated_at:
           description: Timestamp
           type: number
           format: integer
-          example: '1434342123'
+          example: 1434342123
           readOnly: true
         archived_at:
           description: Timestamp
           type: number
           format: integer
-          example: '1434342123'
+          example: 1434342123
           readOnly: true
         hash:
           description: 'Unique hash identifier for this task'
@@ -127,4 +128,9 @@
           description: 'Alternative sort order for status'
           type: integer
           example: 1
+        tags:
+          description: 'Tags assigned to the task'
+          type: array
+          items:
+            $ref: '#/components/schemas/TagAssignment'
       type: object

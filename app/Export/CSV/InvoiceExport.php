@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -34,6 +34,14 @@ class InvoiceExport extends BaseExport
 
     private array $tax_names = [];
 
+    private bool $fan_out = false;
+
+    private const APPLIED_INJECTED_KEYS = [
+        'payment.applied_date',
+        'payment.applied_amount',
+        'payment.applied_refunded',
+    ];
+
     public function __construct(Company $company, array $input)
     {
         $this->company = $company;
@@ -57,9 +65,20 @@ class InvoiceExport extends BaseExport
 
         $this->input['report_keys'] = array_merge($this->input['report_keys'], array_diff($this->forced_client_fields, $this->input['report_keys']));
 
+        $has_invoice_number = in_array('invoice.number', $this->input['report_keys'], true);
+        $has_payment_column = count(array_filter($this->input['report_keys'], fn ($k) => is_string($k) && str_starts_with($k, 'payment.'))) > 0;
+        $this->fan_out = $has_invoice_number && $has_payment_column;
+
+        if ($this->fan_out) {
+            $this->input['report_keys'] = array_merge(
+                $this->input['report_keys'],
+                array_diff(self::APPLIED_INJECTED_KEYS, $this->input['report_keys'])
+            );
+        }
+
         $query = Invoice::query()
                         ->withTrashed()
-                        ->with('client')
+                        ->with($this->invoiceReportRelations())
                         ->whereHas('client', function ($q) {
                             $q->where('is_deleted', false);
                         })
@@ -84,7 +103,7 @@ class InvoiceExport extends BaseExport
 
         $query = $this->filterByUserPermissions($query);
 
-        
+
         if ($this->input['document_email_attachment'] ?? false) {
             $this->queueDocuments($query);
         }
@@ -107,13 +126,14 @@ class InvoiceExport extends BaseExport
             return ['identifier' => $key, 'display_value' => $headerdisplay[$value]];
         })->toArray();
 
-        $report = $query->cursor()
-                ->map(function ($resource) {
+        $report = [];
 
-                    /** @var \App\Models\Invoice $resource */
-                    $row = $this->buildRow($resource);
-                    return $this->processMetaData($row, $resource);
-                })->toArray();
+        $this->streamQuery($query)->each(function ($invoice) use (&$report) {
+            /** @var \App\Models\Invoice $invoice */
+            $this->emitRows($invoice, function (array $row) use (&$report, $invoice) {
+                $report[] = $this->processMetaData($row, $invoice);
+            });
+        });
 
         return array_merge(['columns' => $header], $report);
     }
@@ -131,7 +151,7 @@ class InvoiceExport extends BaseExport
             $second_part = array_slice($this->input['report_keys'], $tax_amount_position + 1);
             $labels = [];
 
-            $this->tax_names = $query->get()
+            $this->tax_names = $this->streamQuery($query)
                 ->flatMap(function ($invoice) {
                     $taxes = [];
 
@@ -169,7 +189,7 @@ class InvoiceExport extends BaseExport
 
 
             foreach ($this->tax_names as $tax_name) {
-                $labels[] = 'tax.'.$tax_name;
+                $labels[] = 'tax.' . $tax_name;
             }
 
             $this->input['report_keys'] = array_merge($first_part, $labels, $second_part);
@@ -178,17 +198,137 @@ class InvoiceExport extends BaseExport
         //insert the header
         $this->csv->insertOne($this->buildHeader());
 
-        $query->cursor()
+        $this->streamQuery($query)
             ->each(function ($invoice) {
-
                 /** @var \App\Models\Invoice $invoice */
-                $this->csv->insertOne($this->buildRow($invoice));
+                $this->emitRows($invoice, function (array $row) {
+                    $this->csv->insertOne($row);
+                });
             });
 
         return $this->csv->toString();
     }
 
-    private function buildRow(Invoice $invoice): array
+    private function invoiceReportRelations(): array
+    {
+        $relations = ['client', 'location'];
+        $keys = $this->input['report_keys'];
+
+        $invoice_relations = [
+            'invoice.project' => 'project',
+            'invoice.recurring_id' => 'recurring_invoice',
+            'invoice.assigned_user_id' => 'assigned_user',
+            'invoice.user_id' => 'user',
+        ];
+
+        foreach ($invoice_relations as $key => $relation) {
+            if (in_array($key, $keys, true)) {
+                $relations[] = $relation;
+            }
+        }
+
+        $client_relations = [
+            'client.user' => 'client.user',
+            'client.assigned_user' => 'client.assigned_user',
+            'client.industry_id' => 'client.industry',
+            'client.size_id' => 'client.size',
+            'client.country_id' => 'client.country',
+            'client.shipping_country_id' => 'client.shipping_country',
+            'client.payment_terms' => 'client.company',
+        ];
+
+        foreach ($client_relations as $key => $relation) {
+            if (in_array($key, $keys, true)) {
+                $relations[] = $relation;
+            }
+        }
+
+        $payment_keys = array_filter($keys, fn ($key): bool => is_string($key) && str_starts_with($key, 'payment.'));
+
+        if ($payment_keys !== []) {
+            if ($this->fan_out) {
+                $relations['paymentables'] = function ($query): void {
+                    if (! ($this->input['include_deleted_applications'] ?? false)) {
+                        $query->whereNull('deleted_at');
+                    } else {
+                        $query->withTrashed();
+                    }
+
+                    $query->orderBy('created_at')->orderBy('id');
+                };
+
+                $relations['paymentables.payment'] = function ($query): void {
+                    $query->withTrashed();
+                };
+                $relations[] = 'paymentables.payment.company';
+
+                if (in_array('payment.user_id', $keys, true)) {
+                    $relations[] = 'paymentables.payment.user';
+                }
+
+                if (in_array('payment.assigned_user_id', $keys, true)) {
+                    $relations[] = 'paymentables.payment.assigned_user';
+                }
+            } else {
+                $relations['payments'] = function ($query): void {
+                    $query->withTrashed();
+                };
+
+                if (in_array('payment.user_id', $keys, true)) {
+                    $relations[] = 'payments.user';
+                }
+
+                if (in_array('payment.assigned_user_id', $keys, true)) {
+                    $relations[] = 'payments.assigned_user';
+                }
+            }
+        }
+
+        return $relations;
+    }
+
+    private function emitRows(Invoice $invoice, \Closure $emit): void
+    {
+        if (! $this->fan_out) {
+            $emit($this->buildRow($invoice));
+            return;
+        }
+
+        $paymentables = $this->loadPaymentables($invoice);
+
+        if ($paymentables->isEmpty()) {
+            $invoice->setRelation('current_paymentable', null);
+            $emit($this->buildRow($invoice));
+            return;
+        }
+
+        foreach ($paymentables as $paymentable) {
+            $invoice->setRelation('current_paymentable', $paymentable);
+            $emit($this->buildRow($invoice));
+        }
+
+        $invoice->setRelation('current_paymentable', null);
+    }
+
+    private function loadPaymentables(Invoice $invoice): \Illuminate\Support\Collection
+    {
+        if ($invoice->relationLoaded('paymentables')) {
+            return $invoice->paymentables;
+        }
+
+        $query = $invoice->paymentables()
+            ->with(['payment' => fn ($q) => $q->withTrashed()]);
+
+        if (! ($this->input['include_deleted_applications'] ?? false)) {
+            $query->whereNull('deleted_at');
+        } else {
+            $query->withTrashed();
+        }
+
+        return $query->orderBy('created_at')->orderBy('id')->get();
+    }
+
+    protected function buildRow(Invoice $invoice): array
     {
         $transformed_invoice = $this->invoice_transformer->transform($invoice);
 
@@ -208,7 +348,7 @@ class InvoiceExport extends BaseExport
 
         }
 
-        
+
         if (count($this->tax_names) > 0) {
 
             $calc = $invoice->calc();
@@ -249,7 +389,10 @@ class InvoiceExport extends BaseExport
 
         if (in_array('invoice.user_id', $this->input['report_keys'])) {
             $entity['invoice.user_id'] = $invoice->user ? $invoice->user->present()->name() : ''; // @phpstan-ignore-line
+        }
 
+        if (in_array('invoice.subtotal', $this->input['report_keys'])) {
+            $entity['invoice.subtotal'] = $invoice->calc()->getSubTotal();
         }
 
         return $entity;

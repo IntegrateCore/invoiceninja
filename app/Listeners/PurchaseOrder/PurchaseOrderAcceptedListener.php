@@ -24,9 +24,7 @@ class PurchaseOrderAcceptedListener implements ShouldQueue
 {
     use UserNotifies;
 
-    public function __construct()
-    {
-    }
+    public function __construct() {}
 
     /**
      * Handle the event.
@@ -48,7 +46,7 @@ class PurchaseOrderAcceptedListener implements ShouldQueue
             /* The User */
             $user = $company_user->user;
 
-            if (! $user) {
+            if ($company_user->trashed() || ! $user ) {
                 continue;
             }
 

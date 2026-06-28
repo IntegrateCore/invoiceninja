@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -49,6 +49,8 @@ class ShowChartRequest extends Request
         $user = auth()->user();
 
         $input = $this->all();
+
+        $input['include_drafts'] = filter_var($input['include_drafts'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
         if (isset($input['date_range'])) {
             $dates = $this->calculateStartAndEndDates($input, $user->company());

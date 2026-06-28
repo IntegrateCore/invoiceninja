@@ -33,6 +33,7 @@ use App\Utils\Traits\MakesHash;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Http;
 use League\Csv\Reader;
+use League\Csv\ResultSet;
 use Tests\TestCase;
 
 /**
@@ -308,6 +309,30 @@ class ReportCsvGenerationTest extends TestCase
 
         $this->account->forceDelete();
 
+    }
+
+    public function testFilterByUserPermissionsWithoutUserId()
+    {
+        Invoice::factory()->count(3)->create([
+            'client_id' => $this->client->id,
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+        ]);
+
+        $export = new \App\Export\CSV\InvoiceExport($this->company, [
+            'date_range' => 'all',
+            'report_keys' => [],
+            'send_email' => false,
+            'include_deleted' => false,
+            'client_id' => null,
+            'status' => null,
+        ]);
+
+        $query = $export->init();
+
+        $this->assertGreaterThanOrEqual(3, $query->count());
+
+        $this->account->forceDelete();
     }
 
     public function testForcedInsertionOfMandatoryColumns()
@@ -1134,15 +1159,15 @@ class ReportCsvGenerationTest extends TestCase
 
         $csv = $response->body();
 
-        $reader = Reader::createFromString($csv);
+        $reader = Reader::fromString($csv);
         $reader->setHeaderOffset(0);
 
-        $res = $reader->fetchColumnByName('Street');
+        $res = ResultSet::from($reader)->fetchColumn('Street');
         $res = iterator_to_array($res, true);
 
         $this->assertEquals('1234', $res[1]);
 
-        $res = $reader->fetchColumnByName('Name');
+        $res = ResultSet::from($reader)->fetchColumn('Name');
         $res = iterator_to_array($res, true);
 
         $this->assertEquals('bob', $res[1]);
@@ -1983,20 +2008,20 @@ class ReportCsvGenerationTest extends TestCase
         $csv = $response->body();
 
 
-        $reader = Reader::createFromString($csv);
+        $reader = Reader::fromString($csv);
         $reader->setHeaderOffset(0);
 
-        $res = $reader->fetchColumnByName('Contact First Name');
+        $res = ResultSet::from($reader)->fetchColumn('Contact First Name');
         $res = iterator_to_array($res, true);
 
         $this->assertEquals('john', $res[1]);
 
-        $res = $reader->fetchColumnByName('Contact Last Name');
+        $res = ResultSet::from($reader)->fetchColumn('Contact Last Name');
         $res = iterator_to_array($res, true);
 
         $this->assertEquals('doe', $res[1]);
 
-        $res = $reader->fetchColumnByName('Contact Email');
+        $res = ResultSet::from($reader)->fetchColumn('Contact Email');
         $res = iterator_to_array($res, true);
 
         $this->assertEquals('john@doe.com', $res[1]);
@@ -2014,10 +2039,10 @@ class ReportCsvGenerationTest extends TestCase
 
     private function getFirstValueByColumn($csv, $column)
     {
-        $reader = Reader::createFromString($csv);
+        $reader = Reader::fromString($csv);
         $reader->setHeaderOffset(0);
 
-        $res = $reader->fetchColumnByName($column);
+        $res = ResultSet::from($reader)->fetchColumn($column);
         $res = iterator_to_array($res, true);
 
         return $res[1];
@@ -2468,6 +2493,311 @@ class ReportCsvGenerationTest extends TestCase
 
         $this->account->forceDelete();
 
+    }
+
+    public function testSurchargeCustomLabelsInCsvHeader()
+    {
+        $custom_fields = new \stdClass();
+        $custom_fields->surcharge1 = 'Freight|number';
+        $custom_fields->surcharge2 = 'Handling Fee|number';
+        $this->company->custom_fields = $custom_fields;
+        $this->company->save();
+
+        Invoice::factory()->create([
+            'client_id' => $this->client->id,
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'custom_surcharge1' => 10.00,
+            'custom_surcharge2' => 5.00,
+        ]);
+
+        $data = [
+            'date_range' => 'all',
+            'report_keys' => ['invoice.number', 'invoice.custom_surcharge1', 'invoice.custom_surcharge2'],
+            'send_email' => false,
+            'include_deleted' => false,
+        ];
+
+        $export = new \App\Export\CSV\InvoiceExport($this->company, $data);
+        $csv = $export->run();
+
+        $reader = Reader::fromString($csv);
+        $reader->setHeaderOffset(0);
+        $header = $reader->getHeader();
+
+        $this->assertContains('Freight', $header);
+        $this->assertContains('Handling Fee', $header);
+        $this->assertNotContains('Custom Surcharge 1', $header);
+        $this->assertNotContains('Custom Surcharge 2', $header);
+
+        $this->account->forceDelete();
+    }
+
+    public function testSurchargeDefaultLabelsWhenNoCustomLabel()
+    {
+        $this->company->custom_fields = new \stdClass();
+        $this->company->save();
+
+        Invoice::factory()->create([
+            'client_id' => $this->client->id,
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'custom_surcharge1' => 10.00,
+        ]);
+
+        $data = [
+            'date_range' => 'all',
+            'report_keys' => ['invoice.number', 'invoice.custom_surcharge1'],
+            'send_email' => false,
+            'include_deleted' => false,
+        ];
+
+        $export = new \App\Export\CSV\InvoiceExport($this->company, $data);
+        $csv = $export->run();
+
+        $reader = Reader::fromString($csv);
+        $reader->setHeaderOffset(0);
+        $header = $reader->getHeader();
+
+        $this->assertContains('Invoice Custom Surcharge 1', $header);
+
+        $this->account->forceDelete();
+    }
+
+    public function testPaymentReportFansOutWhenInvoiceNumberSelected()
+    {
+        $invoice_a = Invoice::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'client_id' => $this->client->id,
+            'number' => 'INV-A',
+            'amount' => 60,
+            'balance' => 60,
+            'status_id' => 2,
+        ]);
+
+        $invoice_b = Invoice::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'client_id' => $this->client->id,
+            'number' => 'INV-B',
+            'amount' => 40,
+            'balance' => 40,
+            'status_id' => 2,
+        ]);
+
+        $payment = \App\Models\Payment::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'client_id' => $this->client->id,
+            'amount' => 100,
+            'applied' => 100,
+            'refunded' => 0,
+            'date' => '2026-01-01',
+            'number' => 'PAY-1',
+            'is_deleted' => 0,
+        ]);
+
+        $ts_a = \Carbon\Carbon::create(2026, 1, 1, 12, 0, 0, 'UTC')->timestamp;
+        $ts_b = \Carbon\Carbon::create(2026, 2, 15, 12, 0, 0, 'UTC')->timestamp;
+
+        \App\Models\Paymentable::create([
+            'payment_id' => $payment->id,
+            'paymentable_type' => 'invoices',
+            'paymentable_id' => $invoice_a->id,
+            'amount' => 60,
+            'refunded' => 0,
+            'created_at' => $ts_a,
+            'updated_at' => $ts_a,
+        ]);
+
+        \App\Models\Paymentable::create([
+            'payment_id' => $payment->id,
+            'paymentable_type' => 'invoices',
+            'paymentable_id' => $invoice_b->id,
+            'amount' => 40,
+            'refunded' => 5,
+            'created_at' => $ts_b,
+            'updated_at' => $ts_b,
+        ]);
+
+        $tz = $this->company->timezone()->name;
+        $expected_date_a = \Carbon\Carbon::createFromTimestamp($ts_a)->setTimezone($tz)->format('Y-m-d');
+        $expected_date_b = \Carbon\Carbon::createFromTimestamp($ts_b)->setTimezone($tz)->format('Y-m-d');
+
+        // baseline: no invoice.number selected → no fan-out, no applied_* columns
+        $baseline = [
+            'date_range' => 'all',
+            'report_keys' => ['payment.number', 'payment.amount'],
+            'send_email' => false,
+            'user_id' => $this->user->id,
+        ];
+
+        $export = new PaymentExport($this->company, $baseline);
+        $csv = $export->run();
+
+        $reader = Reader::fromString($csv);
+        $reader->setHeaderOffset(0);
+        $rows = iterator_to_array($reader->getRecords(), false);
+
+        $this->assertCount(1, $rows);
+        $this->assertNotContains('Payment Applied Date', $reader->getHeader());
+        $this->assertNotContains('Payment Applied Amount', $reader->getHeader());
+        $this->assertNotContains('Payment Applied Refunded', $reader->getHeader());
+
+        // with invoice.number → fan out into one row per paymentable, applied_* auto-injected
+        $fanned = [
+            'date_range' => 'all',
+            'report_keys' => ['payment.number', 'payment.amount', 'invoice.number'],
+            'send_email' => false,
+            'user_id' => $this->user->id,
+        ];
+
+        $export = new PaymentExport($this->company, $fanned);
+        $csv = $export->run();
+
+        $reader = Reader::fromString($csv);
+        $reader->setHeaderOffset(0);
+        $rows = iterator_to_array($reader->getRecords(), false);
+
+        $this->assertCount(2, $rows);
+        $this->assertContains('Payment Applied Date', $reader->getHeader());
+        $this->assertContains('Payment Applied Amount', $reader->getHeader());
+        $this->assertContains('Payment Applied Refunded', $reader->getHeader());
+
+        // both rows carry the same parent payment data
+        $this->assertEquals('PAY-1', $rows[0]['Payment Number']);
+        $this->assertEquals('PAY-1', $rows[1]['Payment Number']);
+
+        // per-paymentable data differs and is ordered by paymentable created_at
+        $this->assertEquals('INV-A', $rows[0]['Invoice Invoice Number']);
+        $this->assertEquals(60, (float) $rows[0]['Payment Applied Amount']);
+        $this->assertEquals(0, (float) $rows[0]['Payment Applied Refunded']);
+        $this->assertEquals($expected_date_a, $rows[0]['Payment Applied Date']);
+
+        $this->assertEquals('INV-B', $rows[1]['Invoice Invoice Number']);
+        $this->assertEquals(40, (float) $rows[1]['Payment Applied Amount']);
+        $this->assertEquals(5, (float) $rows[1]['Payment Applied Refunded']);
+        $this->assertEquals($expected_date_b, $rows[1]['Payment Applied Date']);
+
+        $this->account->forceDelete();
+    }
+
+    public function testInvoiceReportFansOutWhenInvoiceNumberAndPaymentColumnSelected()
+    {
+        $invoice = Invoice::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'client_id' => $this->client->id,
+            'number' => 'INV-FAN',
+            'amount' => 100,
+            'balance' => 100,
+            'status_id' => 2,
+        ]);
+
+        $payment_one = \App\Models\Payment::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'client_id' => $this->client->id,
+            'amount' => 70,
+            'applied' => 70,
+            'refunded' => 0,
+            'date' => '2026-01-01',
+            'number' => 'PAY-FAN-1',
+            'is_deleted' => 0,
+        ]);
+
+        $payment_two = \App\Models\Payment::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'client_id' => $this->client->id,
+            'amount' => 30,
+            'applied' => 30,
+            'refunded' => 0,
+            'date' => '2026-02-15',
+            'number' => 'PAY-FAN-2',
+            'is_deleted' => 0,
+        ]);
+
+        $ts_one = \Carbon\Carbon::create(2026, 1, 1, 12, 0, 0, 'UTC')->timestamp;
+        $ts_two = \Carbon\Carbon::create(2026, 2, 15, 12, 0, 0, 'UTC')->timestamp;
+
+        \App\Models\Paymentable::create([
+            'payment_id' => $payment_one->id,
+            'paymentable_type' => 'invoices',
+            'paymentable_id' => $invoice->id,
+            'amount' => 70,
+            'refunded' => 0,
+            'created_at' => $ts_one,
+            'updated_at' => $ts_one,
+        ]);
+
+        \App\Models\Paymentable::create([
+            'payment_id' => $payment_two->id,
+            'paymentable_type' => 'invoices',
+            'paymentable_id' => $invoice->id,
+            'amount' => 30,
+            'refunded' => 3,
+            'created_at' => $ts_two,
+            'updated_at' => $ts_two,
+        ]);
+
+        // baseline: invoice.number alone (no payment column) → 1 row, no applied_* injection
+        $baseline = [
+            'date_range' => 'all',
+            'report_keys' => ['invoice.number', 'invoice.amount'],
+            'send_email' => false,
+            'include_deleted' => false,
+            'user_id' => $this->user->id,
+        ];
+
+        $export = new \App\Export\CSV\InvoiceExport($this->company, $baseline);
+        $csv = $export->run();
+
+        $reader = Reader::fromString($csv);
+        $reader->setHeaderOffset(0);
+        $rows = iterator_to_array($reader->getRecords(), false);
+
+        $this->assertCount(1, $rows);
+        $this->assertNotContains('Payment Applied Date', $reader->getHeader());
+
+        // both invoice.number AND a payment.* column → fan out per paymentable
+        $fanned = [
+            'date_range' => 'all',
+            'report_keys' => ['invoice.number', 'invoice.amount', 'payment.number', 'payment.amount'],
+            'send_email' => false,
+            'include_deleted' => false,
+            'user_id' => $this->user->id,
+        ];
+
+        $export = new \App\Export\CSV\InvoiceExport($this->company, $fanned);
+        $csv = $export->run();
+
+        $reader = Reader::fromString($csv);
+        $reader->setHeaderOffset(0);
+        $rows = iterator_to_array($reader->getRecords(), false);
+
+        $this->assertCount(2, $rows);
+        $this->assertContains('Payment Applied Date', $reader->getHeader());
+        $this->assertContains('Payment Applied Amount', $reader->getHeader());
+        $this->assertContains('Payment Applied Refunded', $reader->getHeader());
+
+        $tz = $this->company->timezone()->name;
+
+        // ordered by paymentable created_at
+        $this->assertEquals('INV-FAN', $rows[0]['Invoice Invoice Number']);
+        $this->assertEquals('PAY-FAN-1', $rows[0]['Payment Number']);
+        $this->assertEquals(70, (float) $rows[0]['Payment Applied Amount']);
+        $this->assertEquals(0, (float) $rows[0]['Payment Applied Refunded']);
+        $this->assertEquals(\Carbon\Carbon::createFromTimestamp($ts_one)->setTimezone($tz)->format('Y-m-d'), $rows[0]['Payment Applied Date']);
+
+        $this->assertEquals('INV-FAN', $rows[1]['Invoice Invoice Number']);
+        $this->assertEquals('PAY-FAN-2', $rows[1]['Payment Number']);
+        $this->assertEquals(30, (float) $rows[1]['Payment Applied Amount']);
+        $this->assertEquals(3, (float) $rows[1]['Payment Applied Refunded']);
+        $this->assertEquals(\Carbon\Carbon::createFromTimestamp($ts_two)->setTimezone($tz)->format('Y-m-d'), $rows[1]['Payment Applied Date']);
+
+        $this->account->forceDelete();
     }
 
 

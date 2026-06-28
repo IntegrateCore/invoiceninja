@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -96,9 +96,26 @@ class ProjectController extends BaseController
      */
     public function index(ProjectFilters $filters)
     {
-        $projects = Project::filter($filters);
+        $projects = Project::filter($filters)->with('tags');
+
+        if ($this->includesTasks()) {
+            $projects->with(['tasks.tags', 'tasks.project.tags']);
+        }
 
         return $this->listResponse($projects);
+    }
+
+    private function includesTasks(): bool
+    {
+        foreach (explode(',', (string) request()->input('include', '')) as $include) {
+            $include = trim($include);
+
+            if ($include === 'tasks' || str_starts_with($include, 'tasks.')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -265,6 +282,11 @@ class ProjectController extends BaseController
             return $request->disallowUpdate();
         }
 
+        $tag_ids = null;
+        if ($request->has('tags') && is_array($request->input('tags'))) {
+            $tag_ids = Project::resolveTagIds($request->input('tags'), (int) $project->company_id);
+        }
+
         $project->fill($request->all());
         $project->number = empty($project->number) ? $this->getNextProjectNumber($project) : $project->number;
         $project->saveQuietly();
@@ -273,10 +295,15 @@ class ProjectController extends BaseController
             $this->saveDocuments($request->input('documents'), $project, $request->input('is_public', true));
         }
 
+        if ($tag_ids !== null) {
+            $project->tags()->sync($tag_ids);
+        }
+
         event('eloquent.updated: App\Models\Project', $project);
 
         return $this->itemResponse($project->fresh());
     }
+
 
     /**
      * Show the form for creating a new resource.
@@ -369,6 +396,11 @@ class ProjectController extends BaseController
         /** @var \App\Models\User $user */
         $user = auth()->user();
 
+        $tag_ids = null;
+        if ($request->has('tags') && is_array($request->input('tags'))) {
+            $tag_ids = Project::resolveTagIds($request->input('tags'), (int) $user->company()->id);
+        }
+
         $project = ProjectFactory::create($user->company()->id, $user->id);
         $project->fill($request->all());
         $project->saveQuietly();
@@ -380,6 +412,10 @@ class ProjectController extends BaseController
 
         if ($request->has('documents')) {
             $this->saveDocuments($request->input('documents'), $project, $request->input('is_public', true));
+        }
+
+        if ($tag_ids !== null) {
+            $project->tags()->sync($tag_ids);
         }
 
         event('eloquent.created: App\Models\Project', $project);
@@ -538,7 +574,7 @@ class ProjectController extends BaseController
             }
         });
 
-        return $this->listResponse(Project::withTrashed()->whereIn('id', $this->transformKeys($ids)));
+        return $this->listResponse(Project::withTrashed()->company()->whereIn('id', $this->transformKeys($ids)));
     }
 
     /**
@@ -607,7 +643,7 @@ class ProjectController extends BaseController
         $this->entity_transformer = InvoiceTransformer::class;
         $this->entity_type = Invoice::class;
 
-        $invoice = $this->project_repo->invoice($project);
+        $invoice = $this->project_repo->invoice(collect([$project]));
 
         return $this->itemResponse($invoice);
     }

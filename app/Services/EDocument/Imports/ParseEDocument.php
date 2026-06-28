@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -25,10 +25,7 @@ class ParseEDocument extends AbstractService
     /**
      * @throws Exception
      */
-    public function __construct(private UploadedFile $file, private Company $company)
-    {
-
-    }
+    public function __construct(private UploadedFile $file, private Company $company) {}
 
     /**
      * Execute the service.
@@ -49,7 +46,7 @@ class ParseEDocument extends AbstractService
         $account = $this->company->owner()->account;
 
         $extension = $this->file->getClientOriginalExtension() ?: $this->file->getExtension();
-        $mimetype = $this->file->getClientMimeType() ?: $$this->file->getMimeType();
+        $mimetype = $this->file->getClientMimeType() ?: $this->file->getMimeType();
 
         // ZUGFERD - try to parse via Zugferd lib
         switch (true) {
@@ -58,14 +55,21 @@ class ParseEDocument extends AbstractService
                 try {
                     return (new ZugferdEDocument($this->file, $this->company))->run();
                 } catch (\Throwable $e) {
-                    nlog("Zugferd Exception: " . $e->getMessage());
+                    nlog("Zugferd Exception: CII XML not supported" . $e->getMessage());
                     break;
                 }
             case ($extension == 'xml' || $mimetype == 'application/xml') && stristr($this->file->get(), "<Invoice"):
                 try {
                     return (new UblEDocument($this->file, $this->company))->run();
                 } catch (\Throwable $e) {
-                    nlog("UBL Import Exception: " . $e->getMessage());
+                    nlog("UBL Import Exception: <Invoice not supported" . $e->getMessage());
+                    break;
+                }
+            case ($extension == 'xml' || $mimetype == 'application/xml') && stristr($this->file->get(), "<inv:Invoice"):
+                try {
+                    return (new UblEDocument($this->file, $this->company))->run();
+                } catch (\Throwable $e) {
+                    nlog("UBL Import Exception: <inv:Invoice not supported" . $e->getMessage());
                     break;
                 }
         }

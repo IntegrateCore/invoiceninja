@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -45,6 +45,8 @@ class UpdateUserRequest extends Request
             $rules['phone'] = ['sometimes', 'bail', 'string', new HasValidPhoneNumber()];
         }
 
+        $rules['language_id'] = 'bail|nullable|sometimes|exists:languages,id';
+
         return $rules;
     }
 
@@ -56,6 +58,8 @@ class UpdateUserRequest extends Request
             $input['email'] = trim($input['email']);
         } elseif (isset($input['email'])) {
             $input['email'] = false;
+        } else {
+            $input['email'] = $this->user->email;
         }
 
         if (array_key_exists('first_name', $input)) {

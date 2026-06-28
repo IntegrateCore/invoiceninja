@@ -5,13 +5,14 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Http\Requests\Invoice;
 
+use App\Helpers\Cache\Atomic;
 use App\Models\Invoice;
 use App\Http\Requests\Request;
 use App\Utils\Traits\MakesHash;
@@ -46,7 +47,7 @@ class StoreInvoiceRequest extends Request
 
         $rules = [];
 
-        $rules['client_id'] = ['required', 'bail', new VerifactuAmountCheck($this->all()) , Rule::exists('clients', 'id')->where('company_id', $user->company()->id)->where('is_deleted', 0)];
+        $rules['client_id'] = ['required', 'bail', 'integer',new VerifactuAmountCheck($this->all()), Rule::exists('clients', 'id')->where('company_id', $user->company()->id)->where('is_deleted', 0)];
 
         $rules['file'] = 'bail|sometimes|array';
         $rules['file.*'] = $this->fileValidation();
@@ -61,9 +62,10 @@ class StoreInvoiceRequest extends Request
         $rules['is_amount_discount'] = ['boolean'];
 
         $rules['date'] = 'bail|sometimes|date:Y-m-d';
-        $rules['due_date'] = ['bail', 'sometimes', 'nullable', 'after:partial_due_date', Rule::requiredIf(fn () => strlen($this->partial_due_date ?? '') > 1), 'date'];
+        $rules['due_date'] = ['bail', 'sometimes', 'nullable', 'after:partial_due_date', Rule::requiredIf(fn() => strlen($this->partial_due_date ?? '') > 1), 'date'];
 
         $rules['line_items'] = ['bail', 'array'];
+
         $rules['discount'] = 'sometimes|numeric|max:99999999999999';
         $rules['tax_rate1'] = 'bail|sometimes|numeric';
         $rules['tax_rate2'] = 'bail|sometimes|numeric';
@@ -93,13 +95,11 @@ class StoreInvoiceRequest extends Request
         $user = auth()->user();
 
         $client_id = is_string($this->input('client_id', '')) ? $this->input('client_id') : '';
-        $key = $this->ip()."|INVOICE|".$client_id."|".$user->company()->company_key;
+        $key = $this->ip() . "|INVOICE|" . $client_id . "|" . $user->company()->company_key;
 
-        if (\Illuminate\Support\Facades\Cache::has($key)) {
-            usleep(200000);
+        if (!Atomic::set($key, 1, 2)) {
+            usleep(100000);
         }
-
-        \Illuminate\Support\Facades\Cache::put($key, 1);
 
         $input = $this->all();
 
@@ -125,7 +125,7 @@ class StoreInvoiceRequest extends Request
         if (isset($input['partial']) && $input['partial'] == 0) {
             $input['partial_due_date'] = null;
         }
-        
+
         if (!isset($input['tax_rate1'])) {
             $input['tax_rate1'] = 0;
         }
@@ -142,11 +142,16 @@ class StoreInvoiceRequest extends Request
             $input['date'] = now()->addSeconds($user->company()->utc_offset())->format('Y-m-d');
         }
         //handles edge case where we need for force set the due date of the invoice.
-        if (isset($input['client_id']) && (isset($input['partial_due_date']) && strlen($input['partial_due_date']) > 1) && (!array_key_exists('due_date', $input) || (empty($input['due_date']) && empty($this->invoice->due_date)))) {
+        if (isset($input['client_id']) && 
+        (isset($input['partial_due_date']) && 
+        strlen($input['partial_due_date']) > 1) && 
+        (!array_key_exists('due_date', $input) || 
+        (empty($input['due_date']) && 
+        empty($this->invoice->due_date ?? '')))) {
             $client = \App\Models\Client::withTrashed()->find($input['client_id']);
 
             if ($client) {
-                $input['due_date'] = \Illuminate\Support\Carbon::parse($input['date'])->addDays((int)$client->getSetting('payment_terms'))->format('Y-m-d');
+                $input['due_date'] = \Illuminate\Support\Carbon::parse($input['date'])->addDays((int) $client->getSetting('payment_terms'))->format('Y-m-d');
             }
         }
 
@@ -167,7 +172,18 @@ class StoreInvoiceRequest extends Request
         }
 
         $input['lock_key'] = $key;
-        
+
+        if (isset($input['sync'])) {
+            unset($input['sync']);
+        }
+
         $this->replace($input);
+    }
+
+    public function messages(): array
+    {
+        return [
+            'client_id.integer' => 'The value for the client ID is invalid',
+        ];
     }
 }

@@ -5,39 +5,40 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Http\Controllers;
 
-use stdClass;
-use App\Models\Task;
-use App\Utils\Ninja;
-use App\Models\Quote;
+use App\Http\Requests\Activity\DownloadHistoricalEntityRequest;
+use App\Http\Requests\Activity\ShowActivityRequest;
+use App\Http\Requests\Activity\StoreNoteRequest;
+use App\Models\Activity;
 use App\Models\Client;
 use App\Models\Credit;
-use App\Models\Vendor;
 use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Project;
-use App\Models\Activity;
-use Illuminate\Http\Request;
 use App\Models\PurchaseOrder;
-use App\Utils\Traits\MakesHash;
+use App\Models\Quote;
 use App\Models\RecurringExpense;
 use App\Models\RecurringInvoice;
-use App\Utils\PhantomJS\Phantom;
-use App\Utils\HostedPDF\NinjaPdf;
-use App\Utils\Traits\Pdf\PdfMaker;
-use App\Utils\Traits\Pdf\PageNumbering;
-use Illuminate\Support\Facades\Storage;
+use App\Models\Task;
+use App\Models\Vendor;
+use App\Services\Pdf\Purify;
 use App\Transformers\ActivityTransformer;
-use App\Http\Requests\Activity\StoreNoteRequest;
-use App\Http\Requests\Activity\ShowActivityRequest;
-use App\Http\Requests\Activity\DownloadHistoricalEntityRequest;
+use App\Utils\HostedPDF\NinjaPdf;
+use App\Utils\Ninja;
+use App\Utils\PhantomJS\Phantom;
+use App\Utils\Traits\MakesHash;
+use App\Utils\Traits\Pdf\PageNumbering;
+use App\Utils\Traits\Pdf\PdfMaker;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use stdClass;
 
 class ActivityController extends BaseController
 {
@@ -102,7 +103,9 @@ class ActivityController extends BaseController
         /** @var \App\Models\User auth()->user() */
         $user = auth()->user();
 
-        if (!$user->isAdmin()) {
+        $entity = $request->getEntity();
+
+        if ($user->cannot('view', $entity)) {
             $activities->where('user_id', auth()->user()->id);
         }
 
@@ -132,6 +135,11 @@ class ActivityController extends BaseController
         $backup = $activity->backup;
         $html_backup = '';
 
+
+        if (!$activity->backup) {
+            return response()->json(['message' => ctrans('texts.no_backup_exists'), 'errors' => new stdClass()], 404);
+        }
+
         $file = $backup->getFile();
 
         $html_backup = $file;
@@ -157,7 +165,7 @@ class ActivityController extends BaseController
                 $pdf = $numbered_pdf;
             }
         } else {
-            $pdf = $this->makePdf(null, null, $html_backup);
+            $pdf = $this->makePdf(null, null, Purify::clean($html_backup));
 
             $numbered_pdf = $this->pageNumbering($pdf, $activity->company);
 
@@ -169,11 +177,11 @@ class ActivityController extends BaseController
         $activity->company->setLocale();
 
         if (isset($activity->invoice_id)) {
-            $filename = $activity->invoice->numberFormatter().'.pdf';
+            $filename = $activity->invoice->numberFormatter() . '.pdf';
         } elseif (isset($activity->quote_id)) {
-            $filename = $activity->quote->numberFormatter().'.pdf';
+            $filename = $activity->quote->numberFormatter() . '.pdf';
         } elseif (isset($activity->credit_id)) {
-            $filename = $activity->credit->numberFormatter().'.pdf';
+            $filename = $activity->credit->numberFormatter() . '.pdf';
         } else {
             $filename = 'backup.pdf';
         }
@@ -236,7 +244,7 @@ class ActivityController extends BaseController
             case RecurringInvoice::class:
                 $activity->recurring_invoice_id = $entity->id;
                 $activity->client_id = $entity->client_id;
-                                
+
                 $activity->save();
                 return $this->itemResponse($activity);
 
@@ -286,7 +294,7 @@ class ActivityController extends BaseController
                 $activity->payment_id = $entity->id;
                 $activity->client_id = $entity->client_id;
                 $activity->project_id = $entity->project_id;
-                
+
                 $activity->save();
                 return $this->itemResponse($activity);
 
@@ -300,6 +308,6 @@ class ActivityController extends BaseController
                 break;
         }
 
-        
+
     }
 }

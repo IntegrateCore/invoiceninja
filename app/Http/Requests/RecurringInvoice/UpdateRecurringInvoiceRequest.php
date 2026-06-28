@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -48,13 +48,15 @@ class UpdateRecurringInvoiceRequest extends Request
 
         $rules['file'] = 'bail|sometimes|array';
         $rules['file.*'] = $this->fileValidation();
+        $rules['documents'] = 'bail|sometimes|array';
+        $rules['documents.*'] = $this->fileValidation();
 
         $rules['number'] = ['bail', 'sometimes', Rule::unique('recurring_invoices')->where('company_id', $user->company()->id)->ignore($this->recurring_invoice->id)];
 
         $rules['invitations'] = 'sometimes|bail|array';
         $rules['invitations.*.client_contact_id'] = 'bail|required|distinct';
 
-        $rules['client_id'] = ['bail', 'sometimes', Rule::in([$this->recurring_invoice->client_id])];
+        $rules['client_id'] = ['bail', 'sometimes', 'integer', Rule::in([$this->recurring_invoice->client_id])];
 
         $rules['project_id'] = ['bail', 'sometimes', new ValidProjectForClient($this->all())];
         $rules['tax_rate1'] = 'bail|sometimes|numeric';
@@ -104,7 +106,7 @@ class UpdateRecurringInvoiceRequest extends Request
             $input['client_id'] = $this->decodePrimaryKey($input['client_id']);
         }
 
-        
+
         if (array_key_exists('location_id', $input) && is_string($input['location_id'])) {
             $input['location_id'] = $this->decodePrimaryKey($input['location_id']);
         }

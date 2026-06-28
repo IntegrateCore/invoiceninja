@@ -166,6 +166,19 @@ class PdfBuilder
     */
     public function getCompiledHTML($final = false)
     {
+        $title = $this->service->config->entity->numberFormatter();
+
+        $titleElements = $this->document->getElementsByTagName('title');
+
+        if ($titleElements->length > 0) {
+            $titleElements->item(0)->textContent = $title;
+        } else {
+            $head = $this->document->getElementsByTagName('head')->item(0);
+            if ($head) {
+                $titleElement = $this->document->createElement('title', $title);
+                $head->appendChild($titleElement);
+            }
+        }
 
         $html = $this->document->saveHTML();
 
@@ -207,6 +220,28 @@ class PdfBuilder
     }
 
     /**
+     * transformHtmlVariables
+     *
+     * Transform the html variables into a format compatible for use with Twig Templates.
+     *
+     * @return array
+     */
+    private function transformHtmlVariables(): array
+    {
+        $result = [];
+
+        $values = $this->service->html_variables['values'] ?? [];
+        foreach ($values as $key => $value) {
+
+            $cleanKey = ltrim($key, '$');
+            $clientKey = "entity.{$cleanKey}";
+            \Illuminate\Support\Arr::set($result, $clientKey, $value);
+        }
+
+        return $result;
+    }
+
+    /**
      * parseTwigElements
      *
      * Parses any ninja tags in the template and processes them via TWIG.
@@ -216,12 +251,15 @@ class PdfBuilder
     private function parseTwigElements(): self
     {
 
-        $replacements = [];
-        // $contents = $this->document->getElementsByTagName('ninja');
+        $nodeList = $this->document->getElementsByTagName('ninja');
 
+        if ($nodeList->length === 0) {
+            return $this;
+        }
+
+        $replacements = [];
 
         $contents = [];
-        $nodeList = $this->document->getElementsByTagName('ninja');
         for ($i = 0; $i < $nodeList->length; $i++) {
             $contents[] = $nodeList->item($i);
         }
@@ -230,6 +268,10 @@ class PdfBuilder
         $template_service = new TemplateService();
         $template_service->setCompany($this->service->company);
         $data = $template_service->processData($this->service->options)->getData();
+
+        //2026-02-11 - merge the html variables into the data array so they are available to the template in entity.key format.
+        $data = array_merge($data, $this->transformHtmlVariables());
+        $template_service->setData($data);
 
         $twig = $template_service->twig;
 
@@ -951,6 +993,8 @@ class PdfBuilder
                         $element['elements'][] = ['element' => 'td', 'content' => $row[$cell], 'properties' => ['data-ref' => 'task_table-task.tax3-td', 'visi' => $this->visibilityCheck($column_visibility, $cell)]];
                     } elseif ($cell == '$product.unit_cost' || $cell == '$task.rate') {
                         $element['elements'][] = ['element' => 'td', 'content' => $row[$cell], 'properties' => ['style' => 'white-space: nowrap;', 'data-ref' => "{$_type}_table-" . substr($cell, 1) . '-td', 'visi' => $this->visibilityCheck($column_visibility, $cell)]];
+                    } elseif ($cell == '$product.net_cost') {
+                        $element['elements'][] = ['element' => 'td', 'content' => $row[$cell], 'properties' => ['style' => 'white-space: nowrap;', 'data-ref' => "{$_type}_table-" . substr($cell, 1) . '-td', 'visi' => $this->visibilityCheck($column_visibility, $cell)]];
                     } else {
                         $element['elements'][] = ['element' => 'td', 'content' => $row[$cell], 'properties' => ['data-ref' => "{$_type}_table-" . substr($cell, 1) . '-td', 'visi' => $this->visibilityCheck($column_visibility, $cell)]];
                     }
@@ -998,76 +1042,80 @@ class PdfBuilder
             $_table_type = ltrim($table_type, '$'); // From $product -> product.
 
             //2025-01-28 not sure how we ever got ->item and ->service....
-            $data[$key][$table_type.'.product_key'] = $item->product_key ?? $item->item;
-            $data[$key][$table_type.'.item'] = $item->item ?? $item->product_key;
-            $data[$key][$table_type.'.service'] = $item->service ?? $item->product_key;
+            $data[$key][$table_type . '.product_key'] = $item->product_key ?? $item->item;
+            $data[$key][$table_type . '.item'] = $item->item ?? $item->product_key;
+            $data[$key][$table_type . '.service'] = $item->service ?? $item->product_key;
 
             $currentDateTime = null;
             if (isset($this->service->config->entity->next_send_date)) {
                 $currentDateTime = Carbon::parse($this->service->config->entity->next_send_date);
             }
 
-            $data[$key][$table_type.'.notes'] = Helpers::processReservedKeywords($item->notes, $this->service->config->currency_entity, $currentDateTime);
-            $data[$key][$table_type.'.description'] = &$data[$key][$table_type.'.notes'];
+            $data[$key][$table_type . '.notes'] = Helpers::processReservedKeywords($item->notes, $this->service->config->currency_entity, $currentDateTime);
+            $data[$key][$table_type . '.description'] = &$data[$key][$table_type . '.notes'];
 
-            $data[$key][$table_type.".{$_table_type}1"] = strlen($item->custom_value1) >= 1 ? $helpers->formatCustomFieldValue($this->service->company->custom_fields, "{$_table_type}1", $item->custom_value1, $this->service->config->currency_entity) : '';
-            $data[$key][$table_type.".{$_table_type}2"] = strlen($item->custom_value2) >= 1 ? $helpers->formatCustomFieldValue($this->service->company->custom_fields, "{$_table_type}2", $item->custom_value2, $this->service->config->currency_entity) : '';
-            $data[$key][$table_type.".{$_table_type}3"] = strlen($item->custom_value3) >= 1 ? $helpers->formatCustomFieldValue($this->service->company->custom_fields, "{$_table_type}3", $item->custom_value3, $this->service->config->currency_entity) : '';
-            $data[$key][$table_type.".{$_table_type}4"] = strlen($item->custom_value4) >= 1 ? $helpers->formatCustomFieldValue($this->service->company->custom_fields, "{$_table_type}4", $item->custom_value4, $this->service->config->currency_entity) : '';
+            $data[$key][$table_type . ".{$_table_type}1"] = strlen($item->custom_value1) >= 1 ? $helpers->formatCustomFieldValue($this->service->company->custom_fields, "{$_table_type}1", $item->custom_value1, $this->service->config->currency_entity) : '';
+            $data[$key][$table_type . ".{$_table_type}2"] = strlen($item->custom_value2) >= 1 ? $helpers->formatCustomFieldValue($this->service->company->custom_fields, "{$_table_type}2", $item->custom_value2, $this->service->config->currency_entity) : '';
+            $data[$key][$table_type . ".{$_table_type}3"] = strlen($item->custom_value3) >= 1 ? $helpers->formatCustomFieldValue($this->service->company->custom_fields, "{$_table_type}3", $item->custom_value3, $this->service->config->currency_entity) : '';
+            $data[$key][$table_type . ".{$_table_type}4"] = strlen($item->custom_value4) >= 1 ? $helpers->formatCustomFieldValue($this->service->company->custom_fields, "{$_table_type}4", $item->custom_value4, $this->service->config->currency_entity) : '';
 
             if ($item->quantity > 0 || $item->cost > 0) {
-                $data[$key][$table_type.'.quantity'] = $this->service->config->formatValueNoTrailingZeroes($item->quantity);
+                $data[$key][$table_type . '.quantity'] = $this->service->config->formatValueNoTrailingZeroes($item->quantity);
 
-                $data[$key][$table_type.'.unit_cost'] = $this->service->config->formatMoneyNoRounding($item->cost);
+                $data[$key][$table_type . '.unit_cost'] = $this->service->config->formatMoneyNoRounding($item->cost);
 
-                $data[$key][$table_type.'.cost'] = $this->service->config->formatMoney($item->cost);
+                $data[$key][$table_type . '.net_cost'] = $this->service->config->formatMoneyNoRounding($item->net_cost);
 
-                $data[$key][$table_type.'.line_total'] = $this->service->config->formatMoneyNoRounding($item->line_total);
+                $data[$key][$table_type . '.cost'] = $this->service->config->formatMoney($item->cost);
+
+                $data[$key][$table_type . '.line_total'] = $this->service->config->formatMoneyNoRounding($item->line_total);
             } else {
-                $data[$key][$table_type.'.quantity'] = '';
+                $data[$key][$table_type . '.quantity'] = '';
 
-                $data[$key][$table_type.'.unit_cost'] = '';
+                $data[$key][$table_type . '.unit_cost'] = '';
 
-                $data[$key][$table_type.'.cost'] = '';
+                $data[$key][$table_type . '.net_cost'] = '';
 
-                $data[$key][$table_type.'.line_total'] = '';
+                $data[$key][$table_type . '.cost'] = '';
+
+                $data[$key][$table_type . '.line_total'] = '';
             }
 
             if (property_exists($item, 'gross_line_total')) {
-                $data[$key][$table_type.'.gross_line_total'] = ($item->gross_line_total == 0) ? '' : $this->service->config->formatMoney($item->gross_line_total);
+                $data[$key][$table_type . '.gross_line_total'] = ($item->gross_line_total == 0) ? '' : $this->service->config->formatMoney($item->gross_line_total);
             } else {
-                $data[$key][$table_type.'.gross_line_total'] = '';
+                $data[$key][$table_type . '.gross_line_total'] = '';
             }
 
             if (property_exists($item, 'tax_amount')) {
-                $data[$key][$table_type.'.tax_amount'] = ($item->tax_amount == 0) ? '' : $this->service->config->formatMoney($item->tax_amount);
+                $data[$key][$table_type . '.tax_amount'] = ($item->tax_amount == 0) ? '' : $this->service->config->formatMoney($item->tax_amount);
             } else {
-                $data[$key][$table_type.'.tax_amount'] = '';
+                $data[$key][$table_type . '.tax_amount'] = '';
             }
 
             if (isset($item->discount) && $item->discount > 0) {
                 if ($item->is_amount_discount) {
-                    $data[$key][$table_type.'.discount'] = $this->service->config->formatMoney($item->discount);
+                    $data[$key][$table_type . '.discount'] = $this->service->config->formatMoney($item->discount);
                 } else {
-                    $data[$key][$table_type.'.discount'] = $this->service->config->formatValueNoTrailingZeroes(floatval($item->discount)).'%';
+                    $data[$key][$table_type . '.discount'] = $this->service->config->formatValueNoTrailingZeroes(floatval($item->discount)) . '%';
                 }
             } else {
-                $data[$key][$table_type.'.discount'] = '';
+                $data[$key][$table_type . '.discount'] = '';
             }
 
             if (isset($item->tax_rate1)) {
-                $data[$key][$table_type.'.tax_rate1'] = $this->service->config->formatValueNoTrailingZeroes(floatval($item->tax_rate1)).'%';
-                $data[$key][$table_type.'.tax1'] = &$data[$key][$table_type.'.tax_rate1'];
+                $data[$key][$table_type . '.tax_rate1'] = $this->service->config->formatValueNoTrailingZeroes(floatval($item->tax_rate1)) . '%';
+                $data[$key][$table_type . '.tax1'] = &$data[$key][$table_type . '.tax_rate1'];
             }
 
             if (isset($item->tax_rate2)) {
-                $data[$key][$table_type.'.tax_rate2'] = $this->service->config->formatValueNoTrailingZeroes(floatval($item->tax_rate2)).'%';
-                $data[$key][$table_type.'.tax2'] = &$data[$key][$table_type.'.tax_rate2'];
+                $data[$key][$table_type . '.tax_rate2'] = $this->service->config->formatValueNoTrailingZeroes(floatval($item->tax_rate2)) . '%';
+                $data[$key][$table_type . '.tax2'] = &$data[$key][$table_type . '.tax_rate2'];
             }
 
             if (isset($item->tax_rate3)) {
-                $data[$key][$table_type.'.tax_rate3'] = $this->service->config->formatValueNoTrailingZeroes(floatval($item->tax_rate3)).'%';
-                $data[$key][$table_type.'.tax3'] = &$data[$key][$table_type.'.tax_rate3'];
+                $data[$key][$table_type . '.tax_rate3'] = $this->service->config->formatValueNoTrailingZeroes(floatval($item->tax_rate3)) . '%';
+                $data[$key][$table_type . '.tax3'] = &$data[$key][$table_type . '.tax_rate3'];
             }
 
             $data[$key]['task_id'] = property_exists($item, 'task_id') ? $item->task_id : '';
@@ -1093,8 +1141,8 @@ class PdfBuilder
 
         // Filter items by type_id
         $filtered_items = collect($items)->filter(function ($item) use ($type_id) {
-            return $item->type_id == $type_id ||
-                ($type_id == '1' && ($item->type_id == '4' || $item->type_id == '5' || $item->type_id == '6'));
+            return $item->type_id == $type_id
+                || ($type_id == '1' && ($item->type_id == '4' || $item->type_id == '5' || $item->type_id == '6'));
         });
 
         // Transform the items first
@@ -1374,6 +1422,7 @@ class PdfBuilder
             PdfService::DELIVERY_NOTE => $this->getDeliveryNoteSections(),
             PdfService::STATEMENT => $this->getStatementSections(),
             PdfService::PURCHASE_ORDER => $this->getPurchaseOrderSections(),
+            'json_design' => $this, // JSON designs have sections pre-injected
             default => $this->getProductSections(),
         };
     }
@@ -1418,6 +1467,7 @@ class PdfBuilder
             '$purchase_order.due_date' => 'due_date',
             '$purchase_order.balance_due' => 'balance_due',
             '$credit.valid_until' => 'due_date',
+            '$credit.total' => 'amount',
         ];
 
         try {
@@ -1455,7 +1505,7 @@ class PdfBuilder
         $elements = [
             ['element' => 'div', 'properties' => ['style' => 'display: flex; flex-direction: column;'], 'elements' => [
                 ['element' => 'div', 'properties' => ['data-ref' => 'total_table-public_notes', 'style' => 'text-align: left;'], 'elements' => [
-                    ['element' => 'div', 'content' => strtr(str_replace(["labels", "values"], ["",""], $_variables['values']['$entity.public_notes']), $_variables)]
+                    ['element' => 'div', 'content' => strtr(str_replace(["labels", "values"], ["",""], $_variables['values']['$entity.public_notes'] ?? ''), $_variables)],
                 ]],
                 ['element' => 'div', 'content' => '', 'properties' => ['style' => 'text-align: left; display: flex; flex-direction: column; page-break-inside: auto;'], 'elements' => [
                     ['element' => 'div', 'content' => '$entity.terms_label: ', 'properties' => ['data-ref' => 'total_table-terms-label', 'style' => "font-weight:bold; text-align: left; margin-top: 1rem; {$show_terms_label}"]],
@@ -1496,9 +1546,9 @@ class PdfBuilder
             $variable = sprintf('%s%s', '$', $property);
 
             if (
-                !is_null($this->service->config->entity->{$property}) &&
-                !empty($this->service->config->entity->{$property}) &&
-                $this->service->config->entity->{$property} != 0
+                !is_null($this->service->config->entity->{$property})
+               && !empty($this->service->config->entity->{$property})
+               && $this->service->config->entity->{$property} != 0
             ) {
                 continue;
             }
@@ -1630,7 +1680,7 @@ class PdfBuilder
 
         return [
             ['element' => 'thead', 'properties' => [], 'elements' => [
-            ['element' => 'tr', 'elements' => $this->buildTableHeader('product')],
+                ['element' => 'tr', 'elements' => $this->buildTableHeader('product')],
             ]],
             ['element' => 'tbody', 'elements' => $this->buildTableBody('$product')],
         ];
@@ -1679,7 +1729,7 @@ class PdfBuilder
         return [
             ['element' => 'tr', 'properties' => ['data-ref' => 'statement-label'], 'elements' => [
                 ['element' => 'th', 'properties' => [], 'content' => ""],
-                ['element' => 'th', 'properties' => [], 'content' => '<h2>'.ctrans('texts.statement').'</h2>'],
+                ['element' => 'th', 'properties' => [], 'content' => '<h2>' . ctrans('texts.statement') . '</h2>'],
             ]],
             ['element' => 'tr', 'properties' => [], 'elements' => [
                 ['element' => 'th', 'properties' => [], 'content' => ctrans('texts.statement_date')],
@@ -1833,12 +1883,12 @@ class PdfBuilder
         $this->service->html_variables['labels']['$amount_due_label'] = '';
 
         $elements = [
-                ['element' => 'div', 'content' => $this->service->config->client->name, 'show_empty' => false, 'properties' => ['data-ref' => 'delivery_note-client.name']],
-                ['element' => 'div', 'content' => $this->service->html_variables['values']['$client.shipping_address1'], 'show_empty' => false, 'properties' => ['data-ref' => 'delivery_note-client.shipping_address1']],
-                ['element' => 'div', 'content' => $this->service->html_variables['values']['$client.shipping_address2'], 'show_empty' => false, 'properties' => ['data-ref' => 'delivery_note-client.shipping_address2']],
-                ['element' => 'div', 'content' => "{$this->service->html_variables['values']['$client.shipping_city']} {$this->service->html_variables['values']['$client.shipping_state']} {$this->service->html_variables['values']['$client.shipping_postal_code']}", 'show_empty' => false, 'properties' => ['data-ref' => 'delivery_note-client.city_state_postal']],
-                ['element' => 'div', 'content' => optional($this->service->html_variables['values']['$client.shipping_country'])->name, 'show_empty' => false],
-            ];
+            ['element' => 'div', 'content' => $this->service->config->client->name, 'show_empty' => false, 'properties' => ['data-ref' => 'delivery_note-client.name']],
+            ['element' => 'div', 'content' => $this->service->html_variables['values']['$client.shipping_address1'], 'show_empty' => false, 'properties' => ['data-ref' => 'delivery_note-client.shipping_address1']],
+            ['element' => 'div', 'content' => $this->service->html_variables['values']['$client.shipping_address2'], 'show_empty' => false, 'properties' => ['data-ref' => 'delivery_note-client.shipping_address2']],
+            ['element' => 'div', 'content' => "{$this->service->html_variables['values']['$client.shipping_city']} {$this->service->html_variables['values']['$client.shipping_state']} {$this->service->html_variables['values']['$client.shipping_postal_code']}", 'show_empty' => false, 'properties' => ['data-ref' => 'delivery_note-client.city_state_postal']],
+            ['element' => 'div', 'content' => optional($this->service->html_variables['values']['$client.shipping_country'])->name, 'show_empty' => false],
+        ];
 
 
         if (!is_null($this->service->config->contact)) {
@@ -1893,7 +1943,7 @@ class PdfBuilder
             ['element' => 'div', 'content' => $this->service->html_variables['values']['$client.shipping_location_name'], 'show_empty' => false, 'properties' => ['data-ref' => 'shipping_address-client.shipping_location_name']],
             ['element' => 'div', 'content' => $this->service->html_variables['values']['$client.shipping_address1'], 'show_empty' => false, 'properties' => ['data-ref' => 'shipping_address-client.shipping_address1']],
             ['element' => 'div', 'content' => $this->service->html_variables['values']['$client.shipping_address2'], 'show_empty' => false, 'properties' => ['data-ref' => 'shipping_address-client.shipping_address2']],
-            ['element' => 'div', 'content' => "{$this->service->html_variables['values']['$client.shipping_city']} {$this->service->html_variables['values']['$client.shipping_state']} {$this->service->html_variables['values']['$client.shipping_postal_code']}", 'properties' => ['data-ref' => 'shipping_address-client.city_state_postal']],
+            ['element' => 'div', 'content' => "{$this->service->html_variables['values']['$client.shipping_city']}, {$this->service->html_variables['values']['$client.shipping_state']} {$this->service->html_variables['values']['$client.shipping_postal_code']}", 'properties' => ['data-ref' => 'shipping_address-client.city_state_postal']],
             ['element' => 'div', 'content' => $this->service->html_variables['values']['$client.shipping_country'], 'show_empty' => false, 'properties' => ['data-ref' => 'shipping_address-client.shipping_country']],
         ];
 
@@ -2132,7 +2182,7 @@ class PdfBuilder
 
             $contains_html = false;
 
-            $child['content'] = $child['content'] ?? '';
+            $child['content'] ??= '';
 
             if ($this->service->company->markdown_enabled && $this->isMarkdown($child['content'])) {
 
@@ -2178,40 +2228,132 @@ class PdfBuilder
      */
     public function updateVariables(): self
     {
+        if (isset($this->service->document_type) && $this->service->document_type === 'json_design') {
+            return $this->updateJsonDesignVariables();
+        }
 
         $html = strtr($this->getCompiledHTML(), $this->service->html_variables['labels']);
         $html = strtr($html, $this->service->html_variables['values']);
 
         @$this->document->loadHTML($this->convertHtmlToEntities($html));
-        // @$this->document->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
-
-        //new block
-        // $html = htmlspecialchars_decode($html, ENT_QUOTES | ENT_HTML5);
-        // $html = str_ireplace(['<br>','<?xml encoding="UTF-8">'], ['<br/>',''], $html);
-        // @$this->document->loadHTML('<?xml encoding="UTF-8">'.$html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-
-        //continues
         $this->document->saveHTML();
 
         return $this;
     }
 
-    // public function updateVariable(string $element, string $variable, string $value)
-    // {
-    //     $element = $this->document->getElementById($element);
+    /**
+     * JSON designs are assembled from section arrays into a fresh DOM. Replacing
+     * variables directly in that DOM avoids serializing and reparsing the whole
+     * document, which gets expensive for large line-item tables.
+     */
+    private function updateJsonDesignVariables(): self
+    {
+        $this->replaceVariablesInTextNodes();
+        $this->replaceVariablesInAttributes();
 
-    //     $original = $element->nodeValue;
+        return $this;
+    }
 
-    //     $element->nodeValue = '';
+    private function replaceVariablesInTextNodes(): void
+    {
+        $xpath = new \DOMXPath($this->document);
+        $nodes = [];
 
-    //     $replaced = strtr($original, [$variable => $value]);
+        foreach ($xpath->query('//text()[contains(., "$") or contains(., "%24")]') as $node) {
+            $nodes[] = $node;
+        }
 
-    //     $element->appendChild(
-    //         $this->document->createTextNode($replaced)
-    //     );
+        foreach ($nodes as $node) {
+            $value = $this->replaceVariablesInString($node->nodeValue);
 
-    //     return $element;
-    // }
+            if ($value === $node->nodeValue) {
+                continue;
+            }
+
+            if ($this->containsHtml($value) && !$this->hasEncodedHtmlAncestor($node)) {
+                $this->replaceTextNodeWithHtml($node, $value);
+                continue;
+            }
+
+            $node->nodeValue = $value;
+        }
+    }
+
+    private function replaceVariablesInAttributes(): void
+    {
+        foreach ($this->document->getElementsByTagName('*') as $element) {
+            if (!$element->hasAttributes()) {
+                continue;
+            }
+
+            foreach ($element->attributes as $attribute) {
+                if (!str_contains($attribute->value, '$') && !str_contains($attribute->value, '%24')) {
+                    continue;
+                }
+
+                $attribute->value = $this->replaceVariablesInString($attribute->value);
+            }
+        }
+    }
+
+    private function replaceVariablesInString(string $value): string
+    {
+        $value = str_replace('%24', '$', $value);
+        $value = strtr($value, $this->service->html_variables['labels']);
+
+        return strtr($value, $this->service->html_variables['values']);
+    }
+
+    private function containsHtml(string $value): bool
+    {
+        return str_contains($value, '<') && str_contains($value, '>');
+    }
+
+    private function hasEncodedHtmlAncestor(\DOMNode $node): bool
+    {
+        while ($node = $node->parentNode) {
+            if ($node instanceof \DOMElement && $node->getAttribute('data-state') === 'encoded-html') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function replaceTextNodeWithHtml(\DOMNode $node, string $html): void
+    {
+        $parent = $node->parentNode;
+
+        if (!$parent) {
+            $node->nodeValue = $html;
+            return;
+        }
+
+        $temp = new \DOMDocument();
+        $wrappedHtml = '<?xml encoding="UTF-8"><div>' . str_ireplace('<br>', '<br/>', $html) . '</div>';
+
+        if (!@$temp->loadHTML($wrappedHtml, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD)) {
+            $node->nodeValue = $html;
+            return;
+        }
+
+        $wrapper = $temp->getElementsByTagName('div')->item(0);
+        if (!$wrapper) {
+            $node->nodeValue = $html;
+            return;
+        }
+
+        $children = [];
+        foreach ($wrapper->childNodes as $child) {
+            $children[] = $child;
+        }
+
+        foreach ($children as $child) {
+            $parent->insertBefore($this->document->importNode($child, true), $node);
+        }
+
+        $parent->removeChild($node);
+    }
 
     public function getEmptyElements(): self
     {
@@ -2242,14 +2384,27 @@ class PdfBuilder
     private function isChildEmpty(array $child): bool
     {
         if (!isset($child['content']) && isset($child['show_empty']) && $child['show_empty'] === false) {
-            return true;
+            return !isset($child['empty_check']) || $this->resolvesEmpty($child['empty_check']);
         }
 
         if (isset($child['content']) && isset($child['show_empty']) && $child['show_empty'] === false) {
-            $value = strtr($child['content'], $this->service->html_variables['values']);
-            return empty($value) || $value === '&nbsp;' || $value === ' ';
+            return $this->resolvesEmpty($child['empty_check'] ?? $child['content']);
         }
 
         return false;
+    }
+
+    private function resolvesEmpty(string $content): bool
+    {
+        $value = strtr($content, $this->service->html_variables['labels'] ?? []);
+        $value = strtr($value, $this->service->html_variables['values'] ?? []);
+
+        if (preg_match('/\$[A-Za-z_][A-Za-z0-9_.]*/', $value) === 1) {
+            return true;
+        }
+
+        $value = trim(html_entity_decode($value, ENT_QUOTES | ENT_HTML5));
+
+        return $value === '' || $value === '&nbsp;' || $value === "\xc2\xa0";
     }
 }

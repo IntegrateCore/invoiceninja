@@ -1,5 +1,15 @@
 <?php
 
+/**
+ * Invoice Ninja (https://invoiceninja.com).
+ *
+ * @link https://github.com/invoiceninja/invoiceninja source repository
+ *
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
+ *
+ * @license https://www.elastic.co/licensing/elastic-license
+ */
+
 namespace App\Services\EDocument\Gateway\Storecove\Models;
 
 use Symfony\Component\Serializer\Attribute\Context;
@@ -29,7 +39,7 @@ class AllowanceCharges
     // public ?Tax $tax;
 
     #[SerializedPath('[cac:TaxCategory]')]
-    /** @var TaxesDutiesFees[] */
+    /** @var TaxesDutiesFees[]|null */
     public ?array $taxes_duties_fees;
 
     #[SerializedPath('[cbc:AllowanceChargeReason]')]

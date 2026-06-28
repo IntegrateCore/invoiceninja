@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -21,7 +21,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\Support\Facades\Storage;
-use App\Http\Requests\Document\DownloadMultipleDocumentsRequest;
+use App\Http\Requests\ClientPortal\Documents\DownloadMultipleDocumentsRequest;
 use App\Http\Requests\ClientPortal\Documents\ShowDocumentRequest;
 
 class DocumentController extends Controller
@@ -107,8 +107,8 @@ class DocumentController extends Controller
                 $zipFile->addFile(TempFile::path($document->filePath()), $document->name);
             }
 
-            $filename = now().'-documents.zip';
-            $filepath = sys_get_temp_dir().'/'.$filename;
+            $filename = now() . '-documents.zip';
+            $filepath = sys_get_temp_dir() . '/' . $filename;
 
             $zipFile->saveAsFile($filepath) // save the archive to a file
                    ->close(); // close archive

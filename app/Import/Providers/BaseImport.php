@@ -5,40 +5,46 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Import\Providers;
 
+use App\Models\User;
+use App\Utils\Ninja;
+use App\Models\PurchaseOrder;
+use App\Models\Quote;
+use League\Csv\Reader;
+use App\Models\Company;
+use App\Models\Invoice;
+use League\Csv\Statement;
+use App\Factory\TaskFactory;
+use App\Factory\QuoteFactory;
 use App\Factory\ClientFactory;
+use App\Factory\PurchaseOrderFactory;
+use Illuminate\Support\Carbon;
 use App\Factory\InvoiceFactory;
 use App\Factory\PaymentFactory;
-use App\Factory\QuoteFactory;
-use App\Factory\RecurringInvoiceFactory;
-use App\Factory\TaskFactory;
-use App\Http\Requests\Quote\StoreQuoteRequest;
 use App\Import\ImportException;
 use App\Jobs\Mail\NinjaMailerJob;
 use App\Jobs\Mail\NinjaMailerObject;
-use App\Mail\Import\CsvImportCompleted;
-use App\Models\Company;
-use App\Models\Invoice;
-use App\Models\Quote;
-use App\Models\User;
-use App\Repositories\ClientRepository;
-use App\Repositories\InvoiceRepository;
-use App\Repositories\PaymentRepository;
-use App\Repositories\QuoteRepository;
-use App\Repositories\RecurringInvoiceRepository;
 use App\Repositories\TaskRepository;
 use App\Utils\Traits\CleanLineItems;
-use Illuminate\Support\Carbon;
+use App\Repositories\PurchaseOrderRepository;
+use App\Repositories\QuoteRepository;
 use Illuminate\Support\Facades\Cache;
+use App\Repositories\ClientRepository;
+use App\Mail\Import\CsvImportCompleted;
+use App\Repositories\InvoiceRepository;
+use App\Repositories\PaymentRepository;
+use App\Factory\RecurringInvoiceFactory;
 use Illuminate\Support\Facades\Validator;
-use League\Csv\Reader;
-use League\Csv\Statement;
+use App\Http\Requests\PurchaseOrder\StorePurchaseOrderRequest;
+use App\Http\Requests\Quote\StoreQuoteRequest;
+use App\Repositories\RecurringInvoiceRepository;
+use App\Notifications\Ninja\GenericNinjaAdminNotification;
 
 class BaseImport
 {
@@ -70,6 +76,8 @@ class BaseImport
 
     public array $entity_count = [];
 
+    public bool $store_import_for_research = false;
+
     public function __construct(array $request, Company $company)
     {
         $this->company = $company;
@@ -96,7 +104,7 @@ class BaseImport
     {
 
         /** @var string $base64_encoded_csv */
-        $base64_encoded_csv = Cache::get($this->hash.'-'.$entity_type);
+        $base64_encoded_csv = Cache::get($this->hash . '-' . $entity_type);
 
         if (empty($base64_encoded_csv)) {
             return null;
@@ -107,7 +115,7 @@ class BaseImport
         $csv = base64_decode($base64_encoded_csv);
         // $csv = mb_convert_encoding($csv, 'UTF-8', 'UTF-8');
 
-        $csv = Reader::createFromString($csv);
+        $csv = Reader::fromString($csv);
         $csvdelimiter = self::detectDelimiter($csv);
 
         $csv->setDelimiter($csvdelimiter);
@@ -119,9 +127,10 @@ class BaseImport
 
             // Remove Invoice Ninja headers
             if (
-                count($headers) &&
-                count($data) > 4 &&
-                $this->import_type === 'csv'
+                is_array($headers)
+               && count($headers) > 0
+               && count($data) > 4
+               && $this->import_type === 'csv'
             ) {
                 $first_cell = $headers[0];
                 if (strstr($first_cell, config('ninja.app_name'))) {
@@ -230,7 +239,7 @@ class BaseImport
             return $csvData;
         }
 
-        if(is_array($csvData) && !isset($csvData[0][$key])) {
+        if (is_array($csvData) && !isset($csvData[0][$key])) {
             return $csvData;
         }
 
@@ -339,6 +348,19 @@ class BaseImport
 
                 nlog("Ingest {$ex->getMessage()}");
                 nlog($record);
+
+                $this->store_import_for_research = true;
+
+            } catch (\Throwable $ex) {
+                if (\DB::connection(config('database.default'))->transactionLevel() > 0) {
+                    \DB::connection(config('database.default'))->rollBack();
+                }
+
+                nlog("Throwable:: Ingest {$ex->getMessage()}");
+                nlog($record);
+
+                $this->store_import_for_research = true;
+
             }
         }
 
@@ -432,8 +454,8 @@ class BaseImport
 
                 // If we don't have a client ID, but we do have client data, go ahead and create the client.
                 if (
-                    empty($invoice_data['client_id']) &&
-                    ! empty($invoice_data['client'])
+                    empty($invoice_data['client_id'])
+                   && ! empty($invoice_data['client'])
                 ) {
                     $client_data = $invoice_data['client'];
                     $client_data['user_id'] = $this->getUserIDForRecord(
@@ -598,8 +620,8 @@ class BaseImport
 
                 // If we don't have a client ID, but we do have client data, go ahead and create the client.
                 if (
-                    empty($invoice_data['client_id']) &&
-                    ! empty($invoice_data['client'])
+                    empty($invoice_data['client_id'])
+                   && ! empty($invoice_data['client'])
                 ) {
                     $client_data = $invoice_data['client'];
                     $client_data['user_id'] = $this->getUserIDForRecord(
@@ -646,8 +668,8 @@ class BaseImport
                     // If we're doing a generic CSV import, only import payment data if we're not importing a payment CSV.
                     // If we're doing a platform-specific import, trust the platform to only return payment info if there's not a separate payment CSV.
                     if (
-                        $this->import_type !== 'csv' ||
-                        empty($this->column_map['payment'])
+                        $this->import_type !== 'csv'
+                        || empty($this->column_map['payment'])
                     ) {
                         // Check for payment columns
                         if (! empty($invoice_data['payments'])) {
@@ -655,16 +677,17 @@ class BaseImport
                                 $invoice_data['payments'] as $payment_data
                             ) {
 
-                                if($invoice->status_id == \App\Models\Invoice::STATUS_DRAFT)
+                                if ($invoice->status_id == \App\Models\Invoice::STATUS_DRAFT) {
                                     continue;
+                                }
 
                                 if ($payment_data['amount'] == 0 && $invoice->status_id == \App\Models\Invoice::STATUS_PAID) {
                                     $payment_data['amount'] = $invoice->amount;
                                 }
 
                                 $payment_data['user_id'] = $invoice->user_id;
-                                $payment_data['client_id'] =
-                                    $invoice->client_id;
+                                $payment_data['client_id']
+                                    = $invoice->client_id;
                                 $payment_data['invoices'] = [
                                     [
                                         'invoice_id' => $invoice->id,
@@ -752,6 +775,7 @@ class BaseImport
         $invoice = $invoice
             ->service()
             ->markSent()
+            ->setReminder()
             ->fillDefaults()
             ->save();
 
@@ -825,8 +849,8 @@ class BaseImport
 
                 // If we don't have a client ID, but we do have client data, go ahead and create the client.
                 if (
-                    empty($quote_data['client_id']) &&
-                    ! empty($quote_data['client'])
+                    empty($quote_data['client_id'])
+                   && ! empty($quote_data['client'])
                 ) {
                     $client_data = $quote_data['client'];
                     $client_data['user_id'] = $this->getUserIDForRecord(
@@ -861,7 +885,7 @@ class BaseImport
                     if (! empty($quote_data['status_id'])) {
                         $quote->status_id = $quote_data['status_id'];
                     }
-                    
+
                     if (array_key_exists('payments', $quote_data)) {
                         unset($quote_data['payments']);
                     }
@@ -886,6 +910,91 @@ class BaseImport
 
                 $this->error_array['quote'][] = [
                     'invoice' => $raw_quote,
+                    'error' => $message,
+                ];
+            }
+        }
+
+        return $count;
+    }
+
+    private function actionPurchaseOrderStatus(
+        $purchase_order,
+        $purchase_order_data,
+        $purchase_order_repository
+    ) {
+        if ($purchase_order->status_id === PurchaseOrder::STATUS_DRAFT) {
+        } elseif ($purchase_order->status_id === PurchaseOrder::STATUS_SENT) {
+            $purchase_order = $purchase_order
+                ->service()
+                ->markSent()
+                ->save();
+        }
+
+        return $purchase_order;
+    }
+
+    public function ingestPurchaseOrders($purchase_orders, $purchase_order_number_key)
+    {
+        $count = 0;
+
+        $purchase_order_transformer = $this->transformer;
+
+        $purchase_order_repository = new PurchaseOrderRepository();
+        $purchase_order_repository->import_mode = true;
+
+        $purchase_orders = $this->groupInvoices($purchase_orders, $purchase_order_number_key);
+
+        foreach ($purchase_orders as $raw_purchase_order) {
+
+            if (!is_array($raw_purchase_order)) {
+                continue;
+            }
+
+            try {
+                $purchase_order_data = $purchase_order_transformer->transform($raw_purchase_order);
+                $purchase_order_data['line_items'] = $this->cleanItems(
+                    $purchase_order_data['line_items'] ?? []
+                );
+
+                $validator = Validator::make(
+                    $purchase_order_data,
+                    (new StorePurchaseOrderRequest())->rules()
+                );
+                if ($validator->fails()) {
+                    $this->error_array['purchase_order'][] = [
+                        'purchase_order' => $purchase_order_data,
+                        'error' => $validator->errors()->all(),
+                    ];
+                } else {
+                    $purchase_order = PurchaseOrderFactory::create(
+                        $this->company->id,
+                        $this->getUserIDForRecord($purchase_order_data)
+                    );
+                    if (! empty($purchase_order_data['status_id'])) {
+                        $purchase_order->status_id = $purchase_order_data['status_id'];
+                    }
+
+                    $purchase_order_repository->save($purchase_order_data, $purchase_order);
+
+                    $count++;
+
+                    $this->actionPurchaseOrderStatus(
+                        $purchase_order,
+                        $purchase_order_data,
+                        $purchase_order_repository
+                    );
+                }
+            } catch (\Exception $ex) {
+                if ($ex instanceof ImportException) {
+                    $message = $ex->getMessage();
+                } else {
+                    report($ex);
+                    $message = 'Unknown error';
+                }
+
+                $this->error_array['purchase_order'][] = [
+                    'purchase_order' => $raw_purchase_order,
                     'error' => $message,
                 ];
             }
@@ -920,7 +1029,7 @@ class BaseImport
             return $user->id;
         }
 
-        $user = User::whereRaw("account_id = ? AND CONCAT_WS(' ', first_name, last_name) like ?", [$this->company->account_id, '%'.$user_hash.'%'])
+        $user = User::whereRaw("account_id = ? AND CONCAT_WS(' ', first_name, last_name) like ?", [$this->company->account_id, '%' . $user_hash . '%'])
             ->first();
 
         if ($user) {
@@ -935,7 +1044,7 @@ class BaseImport
         $data = [
             'errors'  => $this->error_array,
             'company' => $this->company,
-            'entity_count' => $this->entity_count
+            'entity_count' => $this->entity_count,
         ];
 
         $nmo = new NinjaMailerObject();
@@ -945,6 +1054,40 @@ class BaseImport
         $nmo->to_user = $this->company->owner();
 
         NinjaMailerJob::dispatch($nmo, true);
+
+        /** Debug for import failures */
+        if (Ninja::isHosted() && $this->store_import_for_research) {
+
+            $content = [
+                'company_key - ' . $this->company->company_key,
+                'class_name - ' . class_basename($this),
+                'hash - ' => $this->hash,
+            ];
+
+            $potential_imports = [
+                'client',
+                'product',
+                'invoice',
+                'payment',
+                'vendor',
+                'purchase_order',
+                'expense',
+                'quote',
+                'bank_transaction',
+                'task',
+                'recurring_invoice',
+            ];
+
+            foreach ($potential_imports as $import) {
+
+                if (Cache::has($this->hash . '-' . $import)) {
+                    Cache::put($this->hash . '-' . $import, Cache::get($this->hash . '-' . $import), 60 * 60 * 24 * 2);
+                }
+            }
+
+            $this->company->notification(new GenericNinjaAdminNotification($content))->ninja();
+
+        }
     }
 
     public function preTransform(array $data, $entity_type)
@@ -1016,7 +1159,7 @@ class BaseImport
             'WINDOWS-1251', // CP1251
             'UTF-16',
             'UTF-32',
-            'ASCII'
+            'ASCII',
         ];
 
         foreach ($data as $key => $value) {

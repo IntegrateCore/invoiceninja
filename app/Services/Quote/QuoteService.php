@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -19,6 +19,7 @@ use App\Utils\Traits\MakesHash;
 use App\Exceptions\QuoteConversion;
 use App\Repositories\QuoteRepository;
 use App\Events\Quote\QuoteWasApproved;
+use App\Events\Quote\QuoteWasRejected;
 use App\Services\Invoice\LocationData;
 use App\Services\Quote\UpdateReminder;
 use App\Jobs\EDocument\CreateEDocument;
@@ -134,7 +135,7 @@ class QuoteService
         }
 
         if ($this->quote->client->getSetting('auto_convert_quote')) {
-            $this->convert();
+            $this->convertToInvoice();
 
             $this->invoice
                  ->service()
@@ -147,6 +148,24 @@ class QuoteService
         return $this;
     }
 
+
+    public function reject($contact = null, ?string $notes = null): self
+    {
+
+        if ($this->quote->status_id != Quote::STATUS_SENT) {
+            return $this;
+        }
+
+        $this->setStatus(Quote::STATUS_REJECTED)->save();
+
+        if (! $contact) {
+            $contact = $this->quote->invitations->first()->contact;
+        }
+
+        event(new QuoteWasRejected($contact, $this->quote, $this->quote->company, $notes ?? '', Ninja::eventVars()));
+
+        return $this;
+    }
 
 
     public function approveWithNoCoversion($contact = null): self
@@ -234,12 +253,12 @@ class QuoteService
             //30-06-2023
             try {
                 // if (Storage::disk(config('filesystems.default'))->exists($this->invoice->client->invoice_filepath($invitation).$this->invoice->numberFormatter().'.pdf')) {
-                Storage::disk(config('filesystems.default'))->delete($this->quote->client->quote_filepath($invitation).$this->quote->numberFormatter().'.pdf');
+                Storage::disk(config('filesystems.default'))->delete($this->quote->client->quote_filepath($invitation) . $this->quote->numberFormatter() . '.pdf');
                 // }
 
                 // if (Ninja::isHosted() && Storage::disk('public')->exists($this->invoice->client->invoice_filepath($invitation).$this->invoice->numberFormatter().'.pdf')) {
                 if (Ninja::isHosted()) {
-                    Storage::disk('public')->delete($this->quote->client->quote_filepath($invitation).$this->quote->numberFormatter().'.pdf');
+                    Storage::disk('public')->delete($this->quote->client->quote_filepath($invitation) . $this->quote->numberFormatter() . '.pdf');
                 }
             } catch (\Exception $e) {
                 nlog($e->getMessage());
@@ -256,12 +275,12 @@ class QuoteService
         $this->quote->invitations->each(function ($invitation) {
             try {
                 // if (Storage::disk(config('filesystems.default'))->exists($this->invoice->client->e_invoice_filepath($invitation).$this->invoice->getFileName("xml"))) {
-                Storage::disk(config('filesystems.default'))->delete($this->quote->client->e_document_filepath($invitation).$this->quote->getFileName("xml"));
+                Storage::disk(config('filesystems.default'))->delete($this->quote->client->e_document_filepath($invitation) . $this->quote->getFileName("xml"));
                 // }
 
                 // if (Ninja::isHosted() && Storage::disk('public')->exists($this->invoice->client->e_invoice_filepath($invitation).$this->invoice->getFileName("xml"))) {
                 if (Ninja::isHosted()) {
-                    Storage::disk('public')->delete($this->quote->client->e_document_filepath($invitation).$this->quote->getFileName("xml"));
+                    Storage::disk('public')->delete($this->quote->client->e_document_filepath($invitation) . $this->quote->getFileName("xml"));
                 }
             } catch (\Exception $e) {
                 nlog($e->getMessage());
@@ -311,6 +330,16 @@ class QuoteService
         }
 
         return $this;
+    }
+
+    public function getDocuNinjaSignable(?\App\Models\QuoteInvitation $invite = null)
+    {
+
+        if (class_exists(\InvoiceNinja\AdminApi\Services\DocuNinja\DocuNinja::class)) {
+            $invite = $invite ?: $this->quote->invitations->first();
+            return (new \InvoiceNinja\AdminApi\Services\DocuNinja\DocuNinja())->signable->get($invite);
+        }
+
     }
 
     /**

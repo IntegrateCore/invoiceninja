@@ -1,5 +1,13 @@
 <?php
-
+/**
+ * Invoice Ninja (https://invoiceninja.com).
+ *
+ * @link https://github.com/invoiceninja/invoiceninja source repository
+ *
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
+ *
+ * @license https://www.elastic.co/licensing/elastic-license
+ */
 namespace App\Helpers\Bank\Nordigen\Http;
 
 use Illuminate\Http\Client\PendingRequest;
@@ -7,6 +15,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Nordigen\NordigenPHP\Enums\RequisitionStatus;
 
 class NordigenClient
 {
@@ -24,6 +33,19 @@ class NordigenClient
         ])->timeout(30);
     }
 
+    /**
+     * A requisition is only usable when its accounts are LINKED.
+     *
+     * Returns false when the requisition is missing/404 (getRequisition() returns null),
+     * mid-flow (CR/GC/UA/SA/GA), or in a terminal reconnect state (RJ/SU/EX).
+     */
+    public function isRequisitionValid(string $requisitionId): bool
+    {
+        $requisition = $this->getRequisition($requisitionId);
+
+        return ($requisition['status'] ?? null) === RequisitionStatus::LINKED;
+    }
+
     // ==================== REQUISITIONS ====================
 
     /**
@@ -37,7 +59,7 @@ class NordigenClient
         }
 
         $response = $this->httpClient->get("{$this->baseUrl}/requisitions/", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -47,7 +69,7 @@ class NordigenClient
     public function getRequisition(string $requisitionId): ?array
     {
         $response = $this->httpClient->get("{$this->baseUrl}/requisitions/{$requisitionId}/");
-        
+
         return $this->handleResponse($response);
     }
 
@@ -57,7 +79,7 @@ class NordigenClient
     public function createRequisition(array $data): ?array
     {
         $response = $this->httpClient->post("{$this->baseUrl}/requisitions/", $data);
-        
+
         return $this->handleResponse($response);
     }
 
@@ -67,7 +89,7 @@ class NordigenClient
     public function updateRequisition(string $requisitionId, array $data): ?array
     {
         $response = $this->httpClient->put("{$this->baseUrl}/requisitions/{$requisitionId}/", $data);
-        
+
         return $this->handleResponse($response);
     }
 
@@ -77,7 +99,7 @@ class NordigenClient
     public function deleteRequisition(string $requisitionId): bool
     {
         $response = $this->httpClient->delete("{$this->baseUrl}/requisitions/{$requisitionId}/");
-        
+
         return $response->successful();
     }
 
@@ -94,7 +116,7 @@ class NordigenClient
 
         do {
             $iteration++;
-            
+
             // Safety check to prevent infinite loops
             if ($iteration > $maxIterations) {
                 nlog("getAllRequisitions: Maximum iterations reached ({$maxIterations}), breaking to prevent infinite loop");
@@ -102,28 +124,28 @@ class NordigenClient
             }
 
             $requisitions = $this->getRequisitions($limit, $offset);
-            
+
             if ($requisitions->isEmpty()) {
                 break;
             }
 
             $allRequisitions = $allRequisitions->merge($requisitions);
-            
+
             // Check if we got fewer results than requested (end of data)
             if ($requisitions->count() < $limit) {
                 break;
             }
-            
+
             // Use the last requisition's ID as the offset for cursor-based pagination
             $lastRequisition = $requisitions->last();
             $newOffset = $lastRequisition['id'] ?? null;
-            
+
             // Check if we're making progress (offset is changing)
             if ($newOffset === $offset) {
                 nlog("getAllRequisitions: Offset not changing, likely stuck in loop. Breaking.");
                 break;
             }
-            
+
             $offset = $newOffset;
 
         } while ($offset);
@@ -144,7 +166,7 @@ class NordigenClient
         }
 
         $response = $this->httpClient->get("{$this->baseUrl}/agreements/enduser", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -154,7 +176,7 @@ class NordigenClient
     public function getAgreement(string $agreementId): ?array
     {
         $response = $this->httpClient->get("{$this->baseUrl}/agreements/enduser{$agreementId}/");
-        
+
         return $this->handleResponse($response);
     }
 
@@ -164,7 +186,7 @@ class NordigenClient
     public function createAgreement(array $data): ?array
     {
         $response = $this->httpClient->post("{$this->baseUrl}/agreements/enduser", $data);
-        
+
         return $this->handleResponse($response);
     }
 
@@ -174,7 +196,7 @@ class NordigenClient
     public function updateAgreement(string $agreementId, array $data): ?array
     {
         $response = $this->httpClient->put("{$this->baseUrl}/agreements/enduser/{$agreementId}/", $data);
-        
+
         return $this->handleResponse($response);
     }
 
@@ -184,7 +206,7 @@ class NordigenClient
     public function deleteAgreement(string $agreementId): bool
     {
         $response = $this->httpClient->delete("{$this->baseUrl}/agreements/enduser/{$agreementId}/");
-        
+
         return $response->successful();
     }
 
@@ -199,13 +221,13 @@ class NordigenClient
 
         do {
             $agreements = $this->getAgreements($limit, $offset);
-            
+
             if ($agreements->isEmpty()) {
                 break;
             }
 
             $allAgreements = $allAgreements->merge($agreements);
-            
+
             $lastAgreement = $agreements->last();
             $offset = $lastAgreement['id'] ?? null;
 
@@ -224,7 +246,7 @@ class NordigenClient
         $params = [];
 
         $response = $this->httpClient->get("{$this->baseUrl}/institutions/", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -234,7 +256,7 @@ class NordigenClient
     public function getInstitution(string $institutionId): ?array
     {
         $response = $this->httpClient->get("{$this->baseUrl}/institutions/{$institutionId}/");
-        
+
         return $this->handleResponse($response);
     }
 
@@ -249,7 +271,7 @@ class NordigenClient
         }
 
         $response = $this->httpClient->get("{$this->baseUrl}/institutions/", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -264,13 +286,13 @@ class NordigenClient
 
         do {
             $institutions = $this->getInstitutions($limit, $offset);
-            
+
             if ($institutions->isEmpty()) {
                 break;
             }
 
             $allInstitutions = $allInstitutions->merge($institutions);
-            
+
             $lastInstitution = $institutions->last();
             $offset = $lastInstitution['id'] ?? null;
 
@@ -292,7 +314,7 @@ class NordigenClient
         }
 
         $response = $this->httpClient->get("{$this->baseUrl}/enduser-agreements/", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -302,7 +324,7 @@ class NordigenClient
     public function getEnduserAgreement(string $agreementId): ?array
     {
         $response = $this->httpClient->get("{$this->baseUrl}/enduser-agreements/{$agreementId}/");
-        
+
         return $this->handleResponse($response);
     }
 
@@ -312,7 +334,7 @@ class NordigenClient
     public function createEnduserAgreement(array $data): ?array
     {
         $response = $this->httpClient->post("{$this->baseUrl}/enduser-agreements/", $data);
-        
+
         return $this->handleResponse($response);
     }
 
@@ -322,7 +344,7 @@ class NordigenClient
     public function updateEnduserAgreement(string $agreementId, array $data): ?array
     {
         $response = $this->httpClient->put("{$this->baseUrl}/enduser-agreements/{$agreementId}/", $data);
-        
+
         return $this->handleResponse($response);
     }
 
@@ -332,7 +354,7 @@ class NordigenClient
     public function deleteEnduserAgreement(string $agreementId): bool
     {
         $response = $this->httpClient->delete("{$this->baseUrl}/enduser-agreements/{$agreementId}/");
-        
+
         return $response->successful();
     }
 
@@ -349,7 +371,7 @@ class NordigenClient
         }
 
         $response = $this->httpClient->get("{$this->baseUrl}/accounts/", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -359,7 +381,7 @@ class NordigenClient
     public function getBankAccount(string $accountId): ?array
     {
         $response = $this->httpClient->get("{$this->baseUrl}/accounts/{$accountId}/");
-        
+
         return $this->handleResponse($response);
     }
 
@@ -369,7 +391,7 @@ class NordigenClient
     public function getAccountBalances(string $accountId): ?array
     {
         $response = $this->httpClient->get("{$this->baseUrl}/accounts/{$accountId}/balances/");
-        
+
         return $this->handleResponse($response);
     }
 
@@ -379,7 +401,7 @@ class NordigenClient
     public function getAccountDetails(string $accountId): ?array
     {
         $response = $this->httpClient->get("{$this->baseUrl}/accounts/{$accountId}/details/");
-        
+
         return $this->handleResponse($response);
     }
 
@@ -389,7 +411,7 @@ class NordigenClient
     public function getAccountMetadata(string $accountId): ?array
     {
         $response = $this->httpClient->get("{$this->baseUrl}/accounts/{$accountId}/metadata/");
-        
+
         return $this->handleResponse($response);
     }
 
@@ -399,7 +421,7 @@ class NordigenClient
     public function getAccountHolder(string $accountId): ?array
     {
         $response = $this->httpClient->get("{$this->baseUrl}/accounts/{$accountId}/holder/");
-        
+
         return $this->handleResponse($response);
     }
 
@@ -409,7 +431,7 @@ class NordigenClient
     public function getAccountStatus(string $accountId): ?array
     {
         $response = $this->httpClient->get("{$this->baseUrl}/accounts/{$accountId}/status/");
-        
+
         return $this->handleResponse($response);
     }
 
@@ -424,13 +446,13 @@ class NordigenClient
 
         do {
             $accounts = $this->getBankAccounts($limit, $offset);
-            
+
             if ($accounts->isEmpty()) {
                 break;
             }
 
             $allAccounts = $allAccounts->merge($accounts);
-            
+
             $lastAccount = $accounts->last();
             $offset = $lastAccount['id'] ?? null;
 
@@ -445,28 +467,28 @@ class NordigenClient
      * Get account transactions with pagination
      */
     public function getAccountTransactions(
-        string $accountId, 
-        ?string $dateFrom = null, 
-        ?string $dateTo = null, 
-        int $limit = 100, 
+        string $accountId,
+        ?string $dateFrom = null,
+        ?string $dateTo = null,
+        int $limit = 100,
         ?string $offset = null
     ): Collection {
         $params = ['limit' => $limit];
-        
+
         if ($dateFrom) {
             $params['date_from'] = $dateFrom;
         }
-        
+
         if ($dateTo) {
             $params['date_to'] = $dateTo;
         }
-        
+
         if ($offset) {
             $params['offset'] = $offset;
         }
 
         $response = $this->httpClient->get("{$this->baseUrl}/accounts/{$accountId}/transactions/", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -474,27 +496,27 @@ class NordigenClient
      * Get all transactions across all accounts with pagination
      */
     public function getAllTransactions(
-        ?string $dateFrom = null, 
-        ?string $dateTo = null, 
-        int $limit = 100, 
+        ?string $dateFrom = null,
+        ?string $dateTo = null,
+        int $limit = 100,
         ?string $offset = null
     ): Collection {
         $params = ['limit' => $limit];
-        
+
         if ($dateFrom) {
             $params['date_from'] = $dateFrom;
         }
-        
+
         if ($dateTo) {
             $params['date_to'] = $dateTo;
         }
-        
+
         if ($offset) {
             $params['offset'] = $offset;
         }
 
         $response = $this->httpClient->get("{$this->baseUrl}/transactions/", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -502,8 +524,8 @@ class NordigenClient
      * Get account transactions with full pagination support
      */
     public function getAllAccountTransactions(
-        string $accountId, 
-        ?string $dateFrom = null, 
+        string $accountId,
+        ?string $dateFrom = null,
         ?string $dateTo = null
     ): Collection {
         $allTransactions = collect();
@@ -512,13 +534,13 @@ class NordigenClient
 
         do {
             $transactions = $this->getAccountTransactions($accountId, $dateFrom, $dateTo, $limit, $offset);
-            
+
             if ($transactions->isEmpty()) {
                 break;
             }
 
             $allTransactions = $allTransactions->merge($transactions);
-            
+
             $lastTransaction = $transactions->last();
             $offset = $lastTransaction['id'] ?? null;
 
@@ -531,22 +553,22 @@ class NordigenClient
      * Get account transactions with specific status
      */
     public function getAccountTransactionsByStatus(
-        string $accountId, 
-        string $status, 
-        int $limit = 100, 
+        string $accountId,
+        string $status,
+        int $limit = 100,
         ?string $offset = null
     ): Collection {
         $params = [
             'limit' => $limit,
-            'status' => $status
+            'status' => $status,
         ];
-        
+
         if ($offset) {
             $params['offset'] = $offset;
         }
 
         $response = $this->httpClient->get("{$this->baseUrl}/accounts/{$accountId}/transactions/", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -554,22 +576,22 @@ class NordigenClient
      * Get account transactions by category
      */
     public function getAccountTransactionsByCategory(
-        string $accountId, 
-        string $category, 
-        int $limit = 100, 
+        string $accountId,
+        string $category,
+        int $limit = 100,
         ?string $offset = null
     ): Collection {
         $params = [
             'limit' => $limit,
-            'category' => $category
+            'category' => $category,
         ];
-        
+
         if ($offset) {
             $params['offset'] = $offset;
         }
 
         $response = $this->httpClient->get("{$this->baseUrl}/accounts/{$accountId}/transactions/", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -577,22 +599,22 @@ class NordigenClient
      * Search transactions
      */
     public function searchTransactions(
-        string $accountId, 
-        string $query, 
-        int $limit = 100, 
+        string $accountId,
+        string $query,
+        int $limit = 100,
         ?string $offset = null
     ): Collection {
         $params = [
             'limit' => $limit,
-            'search' => $query
+            'search' => $query,
         ];
-        
+
         if ($offset) {
             $params['offset'] = $offset;
         }
 
         $response = $this->httpClient->get("{$this->baseUrl}/accounts/{$accountId}/transactions/", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -600,24 +622,24 @@ class NordigenClient
      * Get account transactions with amount range
      */
     public function getAccountTransactionsByAmount(
-        string $accountId, 
-        float $minAmount, 
-        float $maxAmount, 
-        int $limit = 100, 
+        string $accountId,
+        float $minAmount,
+        float $maxAmount,
+        int $limit = 100,
         ?string $offset = null
     ): Collection {
         $params = [
             'limit' => $limit,
             'min_amount' => $minAmount,
-            'max_amount' => $maxAmount
+            'max_amount' => $maxAmount,
         ];
-        
+
         if ($offset) {
             $params['offset'] = $offset;
         }
 
         $response = $this->httpClient->get("{$this->baseUrl}/accounts/{$accountId}/transactions/", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -634,7 +656,7 @@ class NordigenClient
         }
 
         $response = $this->httpClient->get("{$this->baseUrl}/payments/", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -644,7 +666,7 @@ class NordigenClient
     public function getPayment(string $paymentId): ?array
     {
         $response = $this->httpClient->get("{$this->baseUrl}/payments/{$paymentId}/");
-        
+
         return $this->handleResponse($response);
     }
 
@@ -654,7 +676,7 @@ class NordigenClient
     public function createPayment(array $data): ?array
     {
         $response = $this->httpClient->post("{$this->baseUrl}/payments/", $data);
-        
+
         return $this->handleResponse($response);
     }
 
@@ -664,7 +686,7 @@ class NordigenClient
     public function updatePayment(string $paymentId, array $data): ?array
     {
         $response = $this->httpClient->put("{$this->baseUrl}/payments/{$paymentId}/", $data);
-        
+
         return $this->handleResponse($response);
     }
 
@@ -674,7 +696,7 @@ class NordigenClient
     public function deletePayment(string $paymentId): bool
     {
         $response = $this->httpClient->delete("{$this->baseUrl}/payments/{$paymentId}/");
-        
+
         return $response->successful();
     }
 
@@ -691,7 +713,7 @@ class NordigenClient
         }
 
         $response = $this->httpClient->get("{$this->baseUrl}/mandates/", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -701,7 +723,7 @@ class NordigenClient
     public function getMandate(string $mandateId): ?array
     {
         $response = $this->httpClient->get("{$this->baseUrl}/mandates/{$mandateId}/");
-        
+
         return $this->handleResponse($response);
     }
 
@@ -711,7 +733,7 @@ class NordigenClient
     public function createMandate(array $data): ?array
     {
         $response = $this->httpClient->post("{$this->baseUrl}/mandates/", $data);
-        
+
         return $this->handleResponse($response);
     }
 
@@ -721,7 +743,7 @@ class NordigenClient
     public function updateMandate(string $mandateId, array $data): ?array
     {
         $response = $this->httpClient->put("{$this->baseUrl}/mandates/{$mandateId}/", $data);
-        
+
         return $this->handleResponse($response);
     }
 
@@ -731,7 +753,7 @@ class NordigenClient
     public function deleteMandate(string $mandateId): bool
     {
         $response = $this->httpClient->delete("{$this->baseUrl}/mandates/{$mandateId}/");
-        
+
         return $response->successful();
     }
 
@@ -748,7 +770,7 @@ class NordigenClient
         }
 
         $response = $this->httpClient->get("{$this->baseUrl}/refunds/", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -758,7 +780,7 @@ class NordigenClient
     public function getRefund(string $refundId): ?array
     {
         $response = $this->httpClient->get("{$this->baseUrl}/refunds/{$refundId}/");
-        
+
         return $this->handleResponse($response);
     }
 
@@ -768,7 +790,7 @@ class NordigenClient
     public function createRefund(array $data): ?array
     {
         $response = $this->httpClient->post("{$this->baseUrl}/refunds/", $data);
-        
+
         return $this->handleResponse($response);
     }
 
@@ -785,7 +807,7 @@ class NordigenClient
         }
 
         $response = $this->httpClient->get("{$this->baseUrl}/events/", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -795,7 +817,7 @@ class NordigenClient
     public function getEvent(string $eventId): ?array
     {
         $response = $this->httpClient->get("{$this->baseUrl}/events/{$eventId}/");
-        
+
         return $this->handleResponse($response);
     }
 
@@ -812,7 +834,7 @@ class NordigenClient
         }
 
         $response = $this->httpClient->get("{$this->baseUrl}/webhooks/", $params);
-        
+
         return $this->handlePaginatedResponse($response);
     }
 
@@ -822,7 +844,7 @@ class NordigenClient
     public function getWebhook(string $webhookId): ?array
     {
         $response = $this->httpClient->get("{$this->baseUrl}/webhooks/{$webhookId}/");
-        
+
         return $this->handleResponse($response);
     }
 
@@ -832,7 +854,7 @@ class NordigenClient
     public function createWebhook(array $data): ?array
     {
         $response = $this->httpClient->post("{$this->baseUrl}/webhooks/", $data);
-        
+
         return $this->handleResponse($response);
     }
 
@@ -842,7 +864,7 @@ class NordigenClient
     public function updateWebhook(string $webhookId, array $data): ?array
     {
         $response = $this->httpClient->put("{$this->baseUrl}/webhooks/{$webhookId}/", $data);
-        
+
         return $this->handleResponse($response);
     }
 
@@ -852,7 +874,7 @@ class NordigenClient
     public function deleteWebhook(string $webhookId): bool
     {
         $response = $this->httpClient->delete("{$this->baseUrl}/webhooks/{$webhookId}/");
-        
+
         return $response->successful();
     }
 
@@ -869,7 +891,7 @@ class NordigenClient
         }
 
         $data = $response->json()['results'];
-    
+
         return collect($data);
     }
 
@@ -897,7 +919,7 @@ class NordigenClient
             'message' => $message,
             'status' => $response->status(),
             'body' => $response->body(),
-            'headers' => $response->headers()
+            'headers' => $response->headers(),
         ]);
     }
 

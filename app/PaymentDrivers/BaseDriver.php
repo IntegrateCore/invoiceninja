@@ -5,43 +5,40 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\PaymentDrivers;
 
-use App\Utils\Ninja;
-use App\Utils\Number;
+use App\DataMapper\InvoiceItem;
+use App\Events\Invoice\InvoiceWasPaid;
+use App\Events\Payment\PaymentWasCreated;
+use App\Exceptions\PaymentFailed;
+use App\Factory\PaymentFactory;
+use App\Jobs\Mail\PaymentFailedMailer;
+use App\Jobs\Util\SystemLogger;
 use App\Models\Client;
-use App\Utils\Helpers;
+use App\Models\ClientContact;
+use App\Models\ClientGatewayToken;
+use App\Models\CompanyGateway;
+use App\Models\GatewayType;
 use App\Models\Invoice;
 use App\Models\Payment;
-use App\Models\SystemLog;
-use App\Models\GatewayType;
 use App\Models\PaymentHash;
-use Illuminate\Support\Str;
-use Illuminate\Http\Request;
-use App\Models\ClientContact;
-use App\Jobs\Mail\NinjaMailer;
-use App\Models\CompanyGateway;
-use Illuminate\Support\Carbon;
-use App\DataMapper\InvoiceItem;
-use App\Factory\PaymentFactory;
-use App\Jobs\Util\SystemLogger;
-use App\Utils\Traits\MakesHash;
-use App\Exceptions\PaymentFailed;
-use App\Jobs\Mail\NinjaMailerJob;
-use App\Models\ClientGatewayToken;
-use Illuminate\Support\Facades\App;
-use App\Jobs\Mail\NinjaMailerObject;
-use App\Utils\Traits\SystemLogTrait;
-use App\Events\Invoice\InvoiceWasPaid;
-use App\Jobs\Mail\PaymentFailedMailer;
-use App\Events\Payment\PaymentWasCreated;
-use App\Mail\Admin\ClientPaymentFailureObject;
+use App\Models\SystemLog;
 use App\Services\Subscription\SubscriptionService;
+use App\Utils\Helpers;
+use App\Utils\Ninja;
+use App\Utils\Number;
+use App\Utils\Traits\MakesHash;
+use App\Utils\Traits\SystemLogTrait;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Class BaseDriver.
@@ -197,9 +194,7 @@ class BaseDriver extends AbstractPaymentDriver
      * @param array $data
      * @return mixed Return a view for collecting payment method information
      */
-    public function authorizeView(array $data)
-    {
-    }
+    public function authorizeView(array $data) {}
 
     /**
      * The payment authorization response
@@ -207,9 +202,7 @@ class BaseDriver extends AbstractPaymentDriver
      * @param  Request $request
      * @return mixed Return a response for collecting payment method information
      */
-    public function authorizeResponse(Request $request)
-    {
-    }
+    public function authorizeResponse(Request $request) {}
 
     /**
      * Process a payment
@@ -217,9 +210,7 @@ class BaseDriver extends AbstractPaymentDriver
      * @param  array $data
      * @return mixed Return a view for the payment
      */
-    public function processPaymentView(array $data)
-    {
-    }
+    public function processPaymentView(array $data) {}
 
     /**
      * Process payment response
@@ -227,9 +218,7 @@ class BaseDriver extends AbstractPaymentDriver
      * @param  Request $request
      * @return mixed   Return a response for the payment
      */
-    public function processPaymentResponse(Request $request)
-    {
-    }
+    public function processPaymentResponse(Request $request) {}
 
     /**
      * Executes a refund attempt for a given amount with a transaction_reference.
@@ -239,9 +228,7 @@ class BaseDriver extends AbstractPaymentDriver
      * @param  bool $return_client_response    Whether the method needs to return a response (otherwise we assume an unattended payment)
      * @return mixed
      */
-    public function refund(Payment $payment, $amount, $return_client_response = false)
-    {
-    }
+    public function refund(Payment $payment, $amount, $return_client_response = false) {}
 
     /**
      * Process an unattended payment.
@@ -249,9 +236,7 @@ class BaseDriver extends AbstractPaymentDriver
      * @param ClientGatewayToken $cgt The client gateway token object
      * @param PaymentHash $payment_hash The Payment hash containing the payment meta data
      */
-    public function tokenBilling(ClientGatewayToken $cgt, PaymentHash $payment_hash)
-    {
-    }
+    public function tokenBilling(ClientGatewayToken $cgt, PaymentHash $payment_hash) {}
 
     /**
      * Detaches a payment method from the gateway
@@ -269,9 +254,7 @@ class BaseDriver extends AbstractPaymentDriver
      *
      * @param int $payment_method_id The Payment Method ID
      */
-    public function setPaymentMethod($payment_method_id)
-    {
-    }
+    public function setPaymentMethod($payment_method_id) {}
 
     public function setClient(Client $client)
     {
@@ -425,72 +408,86 @@ class BaseDriver extends AbstractPaymentDriver
             return;
         }
 
-        if (collect($invoice->line_items)->contains('unit_code', $this->payment_hash->hash)) {
-            $invoice->service()->toggleFeesPaid($this->payment_hash->hash)->save();
-            return;
-        }
+        DB::transaction(function () use ($data, $fee_total) {
+            
+            PaymentHash::where('id', $this->payment_hash->id)->lockForUpdate()->first();
 
-        $unconfirmed_fee_count = collect($invoice->line_items)
-                        ->where('type_id', '3')
-                        ->count();
+            $this->payment_hash->load('fee_invoice');
+            $invoice = $this->payment_hash->fee_invoice;
 
-        if ($unconfirmed_fee_count == 0) {
-
-            nlog("apparently no fee, so injecting here!");
-
-            if (!$invoice->uses_inclusive_taxes) { //must account for taxes! ? line item taxes also
-                $fee_total = round($fee_total / (1 + (($invoice->tax_rate1 + $invoice->tax_rate2 + $invoice->tax_rate3) / 100)), 2);
+            if (!$invoice) {
+                return;
             }
 
-            $balance = $invoice->balance;
-
-            App::forgetInstance('translator');
-            $t = app('translator');
-            $t->replace(Ninja::transformTranslations($invoice->company->settings));
-            App::setLocale($invoice->client->locale());
-
-            $invoice_item = new InvoiceItem();
-            $invoice_item->type_id = '4';
-            $invoice_item->product_key = ctrans('texts.surcharge');
-            $invoice_item->notes = ctrans('texts.online_payment_surcharge');
-            $invoice_item->quantity = 1;
-            $invoice_item->cost = (float)$fee_total;
-
-            if ($invoice->discount > 0 && !$invoice->is_amount_discount) {
-                $invoice_item->discount = -1 * $invoice->discount;
-                $invoice_item->is_amount_discount = false;
+            if (collect($invoice->line_items)->contains('unit_code', $this->payment_hash->hash)) {
+                $invoice->service()->toggleFeesPaid($this->payment_hash->hash)->save();
+                return;
             }
 
-            $invoice_items = $invoice->line_items;
-            $invoice_items[] = $invoice_item;
+            $unconfirmed_fee_count = collect($invoice->line_items)
+                            ->where('type_id', '3')
+                            ->count();
 
-            if (isset($data['gateway_type_id']) && $fees_and_limits = $this->company_gateway->getFeesAndLimits($data['gateway_type_id'])) {
-                $invoice_item->tax_rate1 = $fees_and_limits->fee_tax_rate1;
-                $invoice_item->tax_name1 = $fees_and_limits->fee_tax_name1;
-                $invoice_item->tax_rate2 = $fees_and_limits->fee_tax_rate2;
-                $invoice_item->tax_name2 = $fees_and_limits->fee_tax_name2;
-                $invoice_item->tax_rate3 = $fees_and_limits->fee_tax_rate3;
-                $invoice_item->tax_name3 = $fees_and_limits->fee_tax_name3;
-                $invoice_item->tax_id = (string)\App\Models\Product::PRODUCT_TYPE_OVERRIDE_TAX;
+            if ($unconfirmed_fee_count == 0) {
+
+                nlog("apparently no fee, so injecting here!");
+
+                if (!$invoice->uses_inclusive_taxes) { //must account for taxes! ? line item taxes also
+                    $fee_total = round($fee_total / (1 + (($invoice->tax_rate1 + $invoice->tax_rate2 + $invoice->tax_rate3) / 100)), 2);
+                }
+
+                $balance = $invoice->balance;
+
+                App::forgetInstance('translator');
+                $t = app('translator');
+                $t->replace(Ninja::transformTranslations($invoice->company->settings));
+                App::setLocale($invoice->client->locale());
+
+                $invoice_item = new InvoiceItem();
+                $invoice_item->type_id = '4';
+                $invoice_item->unit_code = $this->payment_hash->hash;   
+
+                $invoice_item->product_key = ctrans('texts.surcharge');
+                $invoice_item->notes = ctrans('texts.online_payment_surcharge');
+                $invoice_item->quantity = 1;
+                $invoice_item->cost = (float) $fee_total;
+
+                if ($invoice->discount > 0 && !$invoice->is_amount_discount) {
+                    $invoice_item->discount = -1 * $invoice->discount;
+                    $invoice_item->is_amount_discount = false;
+                }
+
+                $invoice_items = $invoice->line_items;
+                $invoice_items[] = $invoice_item;
+
+                if (isset($data['gateway_type_id']) && $fees_and_limits = $this->company_gateway->getFeesAndLimits($data['gateway_type_id'])) {
+                    $invoice_item->tax_rate1 = $fees_and_limits->fee_tax_rate1;
+                    $invoice_item->tax_name1 = $fees_and_limits->fee_tax_name1;
+                    $invoice_item->tax_rate2 = $fees_and_limits->fee_tax_rate2;
+                    $invoice_item->tax_name2 = $fees_and_limits->fee_tax_name2;
+                    $invoice_item->tax_rate3 = $fees_and_limits->fee_tax_rate3;
+                    $invoice_item->tax_name3 = $fees_and_limits->fee_tax_name3;
+                    $invoice_item->tax_id = (string) \App\Models\Product::PRODUCT_TYPE_OVERRIDE_TAX;
+                }
+
+                $invoice->line_items = array_values($invoice_items);
+
+                /**Refresh Invoice values*/
+                $invoice = $invoice->calc()->getInvoice();
+
+                $new_balance = $invoice->balance;
+
+                if (round($new_balance - $balance, 2) != 0) {
+                    $invoice->client->service()->calculateBalance();
+                }
+
+            } else {
+
+                $invoice->service()->toggleFeesPaid($this->payment_hash->hash)->save();
+
             }
 
-            $invoice->line_items = array_values($invoice_items);
-
-            /**Refresh Invoice values*/
-            $invoice = $invoice->calc()->getInvoice();
-
-            $new_balance = $invoice->balance;
-
-            if (floatval($new_balance) - floatval($balance) != 0) {
-                $adjustment = $new_balance - $balance;
-                $invoice->client->service()->calculateBalance();
-            }
-
-        } else {
-
-            $invoice->service()->toggleFeesPaid($this->payment_hash->hash)->save();
-
-        }
+        });
 
     }
 
@@ -567,8 +564,6 @@ class BaseDriver extends AbstractPaymentDriver
             throw new PaymentFailed($error, $e->getCode());
         }
 
-        $amount = array_sum(array_column($this->payment_hash->invoices(), 'amount')) + $this->payment_hash->fee_total;
-
         $this->sendFailureMail($error);
 
         SystemLogger::dispatch(
@@ -605,25 +600,6 @@ class BaseDriver extends AbstractPaymentDriver
         );
     }
 
-    public function clientPaymentFailureMailer($error)
-    {
-        if ($this->payment_hash && is_array($this->payment_hash->invoices())) {
-            $nmo = new NinjaMailerObject();
-            $nmo->mailable = new NinjaMailer((new ClientPaymentFailureObject($this->client, $error, $this->client->company, $this->payment_hash))->build());
-            $nmo->company = $this->client->company;
-            $nmo->settings = $this->client->company->settings;
-
-            $invoices = Invoice::query()->whereIn('id', $this->transformKeys(array_column($this->payment_hash->invoices(), 'invoice_id')))->withTrashed()->get();
-
-            $invoices->first()->invitations->each(function ($invitation) use ($nmo) {
-                if ((bool) $invitation->contact->send_email !== false && $invitation->contact->email && !$invitation->contact->is_locked) {
-                    $nmo->to_user = $invitation->contact;
-                    NinjaMailerJob::dispatch($nmo);
-                }
-            });
-        }
-    }
-
     /**
      * Wrapper method for checking if resource is good.
      *
@@ -643,29 +619,12 @@ class BaseDriver extends AbstractPaymentDriver
     public function processUnsuccessfulTransaction($response, $client_present = true)
     {
         $error = array_key_exists('error', $response) ? $response['error'] : 'Undefined Error';
-        $error_code = array_key_exists('error_code', $response) ? $response['error_code'] : 'Undefined Error Code';
 
         if ($this->payment_hash) {
             $this->unWindGatewayFees($this->payment_hash);
         }
 
         $this->sendFailureMail($error);
-
-        $nmo = new NinjaMailerObject();
-        $nmo->mailable = new NinjaMailer((new ClientPaymentFailureObject($this->client, $error, $this->client->company, $this->payment_hash))->build());
-        $nmo->company = $this->client->company;
-        $nmo->settings = $this->client->company->settings;
-
-        if ($this->payment_hash) {
-            $invoices = Invoice::query()->whereIn('id', $this->transformKeys(array_column($this->payment_hash->invoices(), 'invoice_id')))->withTrashed()->get();
-
-            $invoices->first()->invitations->each(function ($invitation) use ($nmo) {
-                if (! $invitation->contact->trashed()) {
-                    $nmo->to_user = $invitation->contact;
-                    NinjaMailerJob::dispatch($nmo);
-                }
-            });
-        }
 
         $message = [
             'server_response' => $response,
@@ -919,8 +878,5 @@ class BaseDriver extends AbstractPaymentDriver
         return 'ok';
     }
 
-    public function importCustomers()
-    {
-
-    }
+    public function importCustomers() {}
 }

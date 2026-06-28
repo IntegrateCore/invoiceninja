@@ -58,7 +58,7 @@ class QuoteExport extends BaseExport
 
         $query = Quote::query()
                         ->withTrashed()
-                        ->with('client')
+                        ->with('client', 'location')
                         ->whereHas('client', function ($q) {
                             $q->where('is_deleted', false);
                         })
@@ -102,7 +102,7 @@ class QuoteExport extends BaseExport
             return ['identifier' => $key, 'display_value' => $headerdisplay[$value]];
         })->toArray();
 
-        $report = $query->cursor()
+        $report = $this->streamQuery($query)
                 ->map(function ($resource) {
 
                     /** @var \App\Models\Quote $resource */
@@ -126,7 +126,7 @@ class QuoteExport extends BaseExport
         //insert the header
         $this->csv->insertOne($this->buildHeader());
 
-        $query->cursor()
+        $this->streamQuery($query)
             ->each(function ($quote) {
 
                 /** @var \App\Models\Quote $quote */
@@ -136,7 +136,7 @@ class QuoteExport extends BaseExport
         return $this->csv->toString();
     }
 
-    private function buildRow(Quote $quote): array
+    protected function buildRow(Quote $quote): array
     {
         $transformed_invoice = $this->quote_transformer->transform($quote);
 
@@ -186,6 +186,9 @@ class QuoteExport extends BaseExport
             $entity['quote.user_id'] = $quote->user ? $quote->user->present()->name() : '';
         }
 
+        if (in_array('quote.subtotal', $this->input['report_keys'])) {
+            $entity['quote.subtotal'] = $quote->calc()->getSubTotal();
+        }
 
         return $entity;
     }

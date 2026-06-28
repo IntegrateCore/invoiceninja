@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -45,12 +45,7 @@ class UpdateWebhookRequest extends Request
     {
         $input = $this->all();
 
-        if (!isset($input['rest_method'])) {
-            $input['rest_method'] = 'post';
-        }
-
-        // if(isset($input['headers']) && count($input['headers']) == 0)
-        //     $input['headers'] = null;
+        $input['rest_method'] = $input['rest_method'] ?? 'post';
 
         $this->replace($input);
     }

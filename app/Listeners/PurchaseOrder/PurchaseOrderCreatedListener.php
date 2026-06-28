@@ -28,9 +28,7 @@ class PurchaseOrderCreatedListener implements ShouldQueue
 
     public $delay = 7;
 
-    public function __construct()
-    {
-    }
+    public function __construct() {}
 
     /**
      * Handle the event.
@@ -51,7 +49,7 @@ class PurchaseOrderCreatedListener implements ShouldQueue
             /* The User */
             $user = $company_user->user;
 
-            if (! $user) {
+            if ($company_user->trashed() || ! $user ) {
                 continue;
             }
 

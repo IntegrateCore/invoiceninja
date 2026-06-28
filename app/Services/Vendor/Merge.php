@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -44,6 +44,7 @@ class Merge extends AbstractService
         $this->mergable_vendor->invoices()->update(['vendor_id' => $this->vendor->id]);
         $this->mergable_vendor->payments()->update(['vendor_id' => $this->vendor->id]);
         $this->mergable_vendor->quotes()->update(['vendor_id' => $this->vendor->id]);
+        $this->mergable_vendor->purchase_orders()->update(['vendor_id' => $this->vendor->id]);
         $this->mergable_vendor->documents()->update(['documentable_id' => $this->vendor->id]);
 
         /* Loop through contacts an only merge distinct contacts by email */

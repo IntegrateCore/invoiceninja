@@ -98,10 +98,9 @@ class InvoiceTransformer extends BaseTransformer
             'tax_name3' => $this->getString($invoice_data, 'invoice.tax_name3'),
             'tax_rate3' => $this->getFloat($invoice_data, 'invoice.tax_rate3'),
             'is_amount_discount' => filter_var(
-                    $this->getString($invoice_data, 'invoice.is_amount_discount'),
-                    FILTER_VALIDATE_BOOLEAN,
-                    FILTER_NULL_ON_FAILURE
-                ),
+                $this->getString($invoice_data, 'invoice.is_amount_discount'),
+                FILTER_VALIDATE_BOOLEAN
+            ),
             'custom_value1' => $this->getString(
                 $invoice_data,
                 'invoice.custom_value1'
@@ -120,7 +119,7 @@ class InvoiceTransformer extends BaseTransformer
             ),
             'footer' => $this->getString($invoice_data, 'invoice.footer'),
             'partial' => $this->getFloat($invoice_data, 'invoice.partial') > 0 ? $this->getFloat($invoice_data, 'invoice.partial') : null,
-            'partial_due_date' =>  isset($invoice_data['invoice.partial_due_date']) ? $this->parseDate($invoice_data['invoice.partial_due_date']) : null,
+            'partial_due_date' =>  !empty($invoice_data['invoice.partial_due_date']) ? $this->parseDate($invoice_data['invoice.partial_due_date']) : null,
             'custom_surcharge1' => $this->getFloat(
                 $invoice_data,
                 'invoice.custom_surcharge1'
@@ -146,6 +145,7 @@ class InvoiceTransformer extends BaseTransformer
                         $this->getString($invoice_data, 'invoice.status')
                     ))
                 ] ?? Invoice::STATUS_SENT,
+            'auto_bill_enabled' => $this->company->getSetting('auto_bill_standard_invoices'),
             // 'archived' => $status === 'archived',
         ];
 
@@ -158,9 +158,15 @@ class InvoiceTransformer extends BaseTransformer
             );
         }
 
-        if (isset($invoice_data['payment.amount'])) {
-            $currency = $this->company->currency();
+        $currency = $this->company->currency();
 
+        $payment_amount =round($this->getFloat(
+            $invoice_data,
+            'payment.amount'
+        ), $currency->precision);
+
+        if ($payment_amount > 0) {
+            
             $transformed['payments'] = [
                 [
                     'date' => isset($invoice_data['payment.date'])
@@ -170,10 +176,7 @@ class InvoiceTransformer extends BaseTransformer
                         $invoice_data,
                         'payment.transaction_reference'
                     ),
-                    'amount' => round($this->getFloat(
-                        $invoice_data,
-                        'payment.amount'
-                    ), $currency->precision),
+                    'amount' => $payment_amount,
                 ],
             ];
         } elseif ($status === 'paid' || $transformed['status_id'] === Invoice::STATUS_PAID) {
@@ -192,8 +195,35 @@ class InvoiceTransformer extends BaseTransformer
                     ),
                 ],
             ];
+        } elseif (
+            isset($invoice_data['invoice.balance'])
+            && $amount > 0
+            && $transformed['balance'] < $amount
+        ) {
+            // An explicit balance less than the invoice amount implies a partial payment has
+            // already been made. Create an implied payment for the paid portion so that the
+            // invoice balance and client balance are both set correctly during import.
+            // Without this, calc()->getInvoice() resets balance to the full amount because
+            // paid_to_date is 0, causing the client balance to be over-counted.
+            $currency = $this->company->currency();
+            $implied_paid = round($amount - $transformed['balance'], $currency->precision);
+
+            if ($implied_paid > 0) {
+                $transformed['payments'] = [
+                    [
+                        'date' => isset($invoice_data['payment.date'])
+                            ? $this->parseDate($invoice_data['payment.date'])
+                            : date('Y-m-d'),
+                        'transaction_reference' => $this->getString(
+                            $invoice_data,
+                            'payment.transaction_reference'
+                        ),
+                        'amount' => $implied_paid,
+                    ],
+                ];
+            }
         }
-        
+
 
         $line_items = [];
 
@@ -206,8 +236,7 @@ class InvoiceTransformer extends BaseTransformer
                 'discount' => $this->getFloat($record, 'item.discount'),
                 'is_amount_discount' => filter_var(
                     $this->getString($record, 'item.is_amount_discount'),
-                    FILTER_VALIDATE_BOOLEAN,
-                    FILTER_NULL_ON_FAILURE
+                    FILTER_VALIDATE_BOOLEAN
                 ),
                 'tax_name1' => $this->getString($record, 'item.tax_name1'),
                 'tax_rate1' => $this->getFloat($record, 'item.tax_rate1'),
@@ -236,13 +265,13 @@ class InvoiceTransformer extends BaseTransformer
         }
 
         /** Support minimal invoice creation with just an amount */
-        if(count($line_items) == 1 && intval($line_items[0]['cost']) == 0 && intval($line_items[0]['quantity']) == 0 && intval($transformed['amount']) != 0) {
+        if (count($line_items) == 1 && intval($line_items[0]['cost']) == 0 && intval($line_items[0]['quantity']) == 0 && intval($transformed['amount']) != 0) {
             $line_items[0]['quantity'] = 1;
             $line_items[0]['cost'] = $transformed['amount'];
         }
 
         $transformed['line_items'] = $this->cleanItems($line_items);
-        
+
         return $transformed;
     }
 }

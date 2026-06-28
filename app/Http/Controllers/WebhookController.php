@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -303,7 +303,6 @@ class WebhookController extends BaseController
 
         $webhook = WebhookFactory::create($user->company()->id, $user->id);
         $webhook->fill($request->all());
-        $webhook->save();
 
         return $this->itemResponse($webhook);
     }
@@ -486,7 +485,7 @@ class WebhookController extends BaseController
 
         $ids = request()->input('ids');
 
-        $webhooks = Webhook::withTrashed()->find($this->transformKeys($ids));
+        $webhooks = Webhook::withTrashed()->company()->find($this->transformKeys($ids));
 
         $webhooks->each(function ($webhook, $key) use ($action) {
             /** @var \App\Models\User $user */
@@ -497,7 +496,7 @@ class WebhookController extends BaseController
             }
         });
 
-        return $this->listResponse(Webhook::withTrashed()->whereIn('id', $this->transformKeys($ids)));
+        return $this->listResponse(Webhook::withTrashed()->company()->whereIn('id', $this->transformKeys($ids)));
     }
 
     public function retry(RetryWebhookRequest $request, Webhook $webhook)
@@ -513,7 +512,7 @@ class WebhookController extends BaseController
             default => $includes = ''
         };
 
-        $class = 'App\Models\\'.ucfirst(Str::camel($request->entity));
+        $class = 'App\Models\\' . ucfirst(Str::camel($request->entity));
 
         $entity = $class::query()->withTrashed()->where('id', $this->decodePrimaryKey($request->entity_id))->company()->first();
 

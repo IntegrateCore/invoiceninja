@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -90,7 +90,7 @@ class VendorExport extends BaseExport
             return ['identifier' => $key, 'display_value' => $headerdisplay[$value]];
         })->toArray();
 
-        $report = $query->cursor()
+        $report = $this->streamQuery($query)
                 ->map(function ($resource) {
 
                     /** @var \App\Models\Vendor $resource */
@@ -109,7 +109,7 @@ class VendorExport extends BaseExport
         //insert the header
         $this->csv->insertOne($this->buildHeader());
 
-        $query->cursor()
+        $this->streamQuery($query)
               ->each(function ($vendor) {
 
                   /** @var \App\Models\Vendor $vendor */
@@ -119,7 +119,7 @@ class VendorExport extends BaseExport
         return $this->csv->toString();
     }
 
-    private function buildRow(Vendor $vendor): array
+    protected function buildRow(Vendor $vendor): array
     {
         $transformed_contact = false;
 

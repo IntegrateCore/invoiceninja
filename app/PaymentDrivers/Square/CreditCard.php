@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -48,6 +48,9 @@ class CreditCard implements MethodInterface, LivewireMethodInterface
     public function authorizeView($data): View
     {
         $data['gateway'] = $this->square_driver;
+        $data['square_contact'] = $this->buildClientObject();
+        $data['currencyCode'] = $this->square_driver->client->getCurrencyCode();
+        $data['payment_method_id'] = GatewayType::CREDIT_CARD;
 
         return render('gateways.square.credit_card.authorize', $data);
     }
@@ -58,8 +61,17 @@ class CreditCard implements MethodInterface, LivewireMethodInterface
      * @param Request $request
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function authorizeResponse($request): RedirectResponse
+    public function authorizeResponse($request)
     {
+        $source_id = $request->input('sourceId');
+
+        if (! $source_id) {
+            return redirect()->route('client.payment_methods.index')
+                ->withErrors(ctrans('texts.invalid_card_number'));
+        }
+
+        $this->createCard($source_id);
+
         return redirect()->route('client.payment_methods.index');
     }
 
@@ -97,7 +109,10 @@ class CreditCard implements MethodInterface, LivewireMethodInterface
         );
 
         if ($request->shouldUseToken()) {
-            $cgt = ClientGatewayToken::query()->where('token', $request->token)->first();
+            $cgt = ClientGatewayToken::query()
+                ->where('token', $request->token)
+                ->where('client_id', $this->square_driver->client->id)
+                ->firstOrFail();
             $token = $cgt->token;
         }
 
@@ -182,9 +197,13 @@ class CreditCard implements MethodInterface, LivewireMethodInterface
     {
         $body = \json_decode($response->getBody());
 
+        $error = isset($body->errors[0]->detail)
+            ? $body->errors[0]->detail
+            : ($response->getBody() ?: 'Unknown error from Square.');
+
         $data = [
             'response' => $response,
-            'error' => $body->errors[0]->detail,
+            'error' => $error,
             'error_code' => '',
         ];
 
@@ -230,7 +249,11 @@ class CreditCard implements MethodInterface, LivewireMethodInterface
             }
 
         } else {
-            throw new PaymentFailed($body->errors[0]->detail, 500);
+            $message = isset($body->errors[0]->detail)
+                ? $body->errors[0]->detail
+                : ($api_response->getBody() ?: 'Unknown error from Square card creation.');
+
+            throw new PaymentFailed($message, 500);
         }
 
         return false;

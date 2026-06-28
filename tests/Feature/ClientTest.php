@@ -68,6 +68,55 @@ class ClientTest extends TestCase
     }
 
 
+    public function testClientClone()
+    {
+        $settings = $this->client->settings;
+        $settings->currency_id = 12;
+        $this->client->settings = $settings;
+        $this->client->save();
+
+        $this->client->fresh();
+
+        $data = [
+            'action' => 'clone',
+            'ids' => [$this->client->hashed_id],
+        ];
+
+        $response = $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+        ])->postJson('/api/v1/clients/bulk', $data);
+
+        $response->assertStatus(200);
+
+        $arr = $response->json()['data'][0];
+
+        $this->assertEquals($this->client->client_hash, $arr['client_hash']);
+
+        $this->assertEquals($this->client->address1, $arr['address1']);
+        $this->assertEquals($this->client->address2, $arr['address2']);
+        $this->assertEquals($this->client->city, $arr['city']);
+        $this->assertEquals($this->client->state, $arr['state']);
+        $this->assertEquals($this->client->postal_code, $arr['postal_code']);
+        $this->assertEquals($this->client->country_id, $arr['country_id']);
+        $this->assertEquals($this->client->shipping_address1, $arr['shipping_address1']);
+        $this->assertEquals($this->client->shipping_address2, $arr['shipping_address2']);
+        $this->assertEquals($this->client->shipping_city, $arr['shipping_city']);
+        $this->assertEquals($this->client->shipping_state, $arr['shipping_state']);
+        $this->assertEquals($this->client->shipping_postal_code, $arr['shipping_postal_code']);
+        $this->assertEquals($this->client->shipping_country_id, $arr['shipping_country_id']);
+        $this->assertEquals($this->client->routing_id, $arr['routing_id']);
+        $this->assertEquals($this->client->is_tax_exempt, $arr['is_tax_exempt']);
+        $this->assertEquals($this->client->has_valid_vat_number, $arr['has_valid_vat_number']);
+        $this->assertEquals($this->client->classification, $arr['classification']);
+        $this->assertEquals($this->client->phone, $arr['phone']);
+        $this->assertEquals($this->client->website, $arr['website']);
+        $this->assertEquals($this->client->private_notes, $arr['private_notes']);
+        $this->assertEquals($this->client->public_notes, $arr['public_notes']);
+        $this->assertEquals($this->client->settings->currency_id, $arr['settings']['currency_id']);
+        $this->assertCount(count($arr['contacts']), $this->client->contacts);
+    }
+
     public function testNameValidation4()
     {
         $data = [
@@ -287,6 +336,169 @@ class ClientTest extends TestCase
         ])->postJson('/api/v1/clients', $data);
 
         $response->assertStatus(200);
+    }
+
+    public function testNonPrimaryContactCoercedWhenSendEmailAndCcOnlyBothSubmitted()
+    {
+        /**
+         * A non-primary contact must never persist with send_email = true AND
+         * cc_only = true. When both are submitted, cc_only wins and send_email
+         * is coerced off by ClientContactRepository::save().
+         */
+        $data = [
+            'name' => 'CC Edge Case',
+            'contacts' => [
+                [
+                    'email' => 'primary@example.com',
+                    'first_name' => 'Primary',
+                    'send_email' => true,
+                ],
+                [
+                    'email' => 'cc@example.com',
+                    'first_name' => 'CarbonCopy',
+                    'send_email' => true,
+                    'cc_only' => true,
+                ],
+            ],
+        ];
+
+        $response = $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+        ])->putJson('/api/v1/clients/'.$this->client->hashed_id, $data)
+            ->assertStatus(200);
+
+        $cc_contact = ClientContact::where('client_id', $this->client->id)
+            ->where('email', 'cc@example.com')
+            ->first();
+
+        $this->assertNotNull($cc_contact);
+        $this->assertFalse((bool) $cc_contact->is_primary);
+
+        /* Both were submitted true; cc_only wins and send_email is coerced off. */
+        $this->assertFalse((bool) $cc_contact->send_email);
+        $this->assertTrue((bool) $cc_contact->cc_only);
+    }
+
+    public function testPrimaryContactAlwaysSendsEmailAndIsNotCcOnly()
+    {
+        /**
+         * The primary contact must always have send_email = true and cc_only = false,
+         * even when a non-primary contact carries send_email = true.
+         */
+        $data = [
+            'name' => 'Primary Guarantee',
+            'contacts' => [
+                ['email' => 'primary@example.com', 'first_name' => 'Prim', 'send_email' => false, 'cc_only' => true],
+                ['email' => 'second@example.com', 'first_name' => 'Sec', 'send_email' => true],
+            ],
+        ];
+
+        $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+        ])->putJson('/api/v1/clients/'.$this->client->hashed_id, $data)
+            ->assertStatus(200);
+
+        $primary = ClientContact::where('client_id', $this->client->id)
+            ->where('is_primary', true)
+            ->first();
+
+        $this->assertNotNull($primary);
+        $this->assertTrue((bool) $primary->send_email);
+        $this->assertFalse((bool) $primary->cc_only);
+    }
+
+    public function testNonPrimaryCcOnlyContactHasSendEmailDisabled()
+    {
+        $data = [
+            'name' => 'CC Only',
+            'contacts' => [
+                ['email' => 'primary@example.com', 'first_name' => 'Prim'],
+                ['email' => 'cc@example.com', 'first_name' => 'CC', 'cc_only' => true],
+            ],
+        ];
+
+        $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+        ])->putJson('/api/v1/clients/'.$this->client->hashed_id, $data)
+            ->assertStatus(200);
+
+        $cc = ClientContact::where('client_id', $this->client->id)
+            ->where('email', 'cc@example.com')
+            ->first();
+
+        $this->assertNotNull($cc);
+        $this->assertFalse((bool) $cc->send_email);
+        $this->assertTrue((bool) $cc->cc_only);
+    }
+
+    public function testReusedRepositoryStillMarksPrimaryOnSubsequentClient()
+    {
+        /**
+         * Regression: the repository instance is reused across multiple save()
+         * calls (e.g. imports loop a single ClientRepository). Without resetting
+         * is_primary at the start of save(), every client after the first ended
+         * up with NO primary contact.
+         */
+        $repo = app(\App\Repositories\ClientContactRepository::class);
+
+        $client_a = Client::factory()->create(['user_id' => $this->user->id, 'company_id' => $this->company->id]);
+        $client_b = Client::factory()->create(['user_id' => $this->user->id, 'company_id' => $this->company->id]);
+
+        $contacts = ['contacts' => [['email' => 'a@example.com', 'first_name' => 'A']]];
+
+        $repo->save($contacts, $client_a);
+        $repo->save(['contacts' => [['email' => 'b@example.com', 'first_name' => 'B']]], $client_b);
+
+        $this->assertEquals(1, $client_a->contacts()->where('is_primary', true)->count());
+        $this->assertEquals(1, $client_b->contacts()->where('is_primary', true)->count());
+    }
+
+    public function testCannotSetSendEmailAndCcOnlyOnClientRecord()
+    {
+        /**
+         * Thesis: send_email and cc_only are contact-level properties only
+         * (present in ClientContact::$fillable, absent from Client::$fillable
+         * and absent as columns on the clients table). Submitting them at the
+         * client level on update must NOT set them on the client record.
+         */
+        $this->assertNotContains('send_email', $this->client->getFillable());
+        $this->assertNotContains('cc_only', $this->client->getFillable());
+
+        $data = [
+            'name' => 'A Funky Name',
+            'send_email' => true,
+            'cc_only' => true,
+            'contacts' => [
+                [
+                    'id' => $this->client->contacts->first()->hashed_id,
+                    'email' => 'funky@example.com',
+                    'send_email' => true,
+                ],
+            ],
+        ];
+
+        $response = $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+        ])->putJson('/api/v1/clients/'.$this->client->hashed_id, $data)
+            ->assertStatus(200);
+
+        $arr = $response->json();
+
+        /** The bogus client-level props must never be echoed back as set. */
+        $this->assertArrayNotHasKey('send_email', $arr['data']);
+        $this->assertArrayNotHasKey('cc_only', $arr['data']);
+
+        /** They must not have been mass-assigned onto the model either. */
+        $client = $this->client->fresh();
+
+        $this->assertNotTrue($client->getAttribute('send_email'));
+        $this->assertNotTrue($client->getAttribute('cc_only'));
+        $this->assertArrayNotHasKey('send_email', $client->getAttributes());
+        $this->assertArrayNotHasKey('cc_only', $client->getAttributes());
     }
 
     public function testClientMergeContactDrop()

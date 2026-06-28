@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -13,7 +13,10 @@
 namespace App\Models;
 
 use App\Casts\AsReferralEarningCollection;
+use App\Casts\ReferralMetaCast;
+use App\Casts\UserSettingsCast;
 use App\DataMapper\Referral\ReferralEarning;
+use App\DataMapper\Referral\ReferralMeta;
 use App\Jobs\Mail\NinjaMailer;
 use App\Jobs\Mail\NinjaMailerJob;
 use App\Jobs\Mail\NinjaMailerObject;
@@ -70,7 +73,7 @@ use Laracasts\Presenter\PresentableTrait;
  * @property string|null $custom_value2
  * @property string|null $custom_value3
  * @property string|null $custom_value4
- * @property object|null $referral_meta
+ * @property ReferralMeta|null $referral_meta
  * @property int|null $created_at
  * @property int|null $updated_at
  * @property int|null|Carbon $deleted_at
@@ -81,9 +84,11 @@ use Laracasts\Presenter\PresentableTrait;
  * @property Carbon|null $oauth_user_token_expiry
  * @property string|null $sms_verification_code
  * @property bool $verified_phone_number
+ * @property \App\DataMapper\UserSettings|null $settings
  * @property array|null $referral_earnings
  * @property-read \App\Models\Account $account
  * @property-read \App\Models\Company $company
+ * @property-read \App\Models\Language|null $language
  * @property-read mixed $hashed_id
  * @property-read \Illuminate\Notifications\DatabaseNotificationCollection<int, \Illuminate\Notifications\DatabaseNotification> $notifications
  * @property-read int|null $notifications_count
@@ -131,7 +136,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     protected $presenter = UserPresenter::class;
 
-    protected $with = []; // ? companies also
+    protected $with = ['passkey_credentials'];
 
     protected $dateFormat = 'Y-m-d H:i:s.u';
 
@@ -182,18 +187,18 @@ class User extends Authenticatable implements MustVerifyEmail
 
     protected $casts = [
         'oauth_user_token' => 'object',
-        'settings'         => 'object',
+        'settings'         => UserSettingsCast::class,
         'updated_at'       => 'timestamp',
         'created_at'       => 'timestamp',
         'deleted_at'       => 'timestamp',
         'oauth_user_token_expiry' => 'datetime',
-        'referral_meta' => 'object',
+        'referral_meta' => ReferralMetaCast::class,
         'referral_earnings' => AsReferralEarningCollection::class,
     ];
 
     public function name()
     {
-        return $this->first_name.' '.$this->last_name;
+        return $this->first_name . ' ' . $this->last_name;
     }
 
     public function getEntityType()
@@ -235,7 +240,7 @@ class User extends Authenticatable implements MustVerifyEmail
         }
 
         if (request()->header('X-API-TOKEN')) {
-            
+
             $token = CompanyToken::with(['cu'])->where('token', request()->header('X-API-TOKEN'))->first();
             if ($token) {
                 return $token;
@@ -351,6 +356,201 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(Client::class);
     }
 
+    public function activities(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Activity::class);
+    }
+
+    public function bank_integrations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(BankIntegration::class)->withTrashed();
+    }
+
+    public function bank_transaction_rules(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(BankTransactionRule::class)->withTrashed();
+    }
+
+    public function bank_transactions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(BankTransaction::class)->withTrashed();
+    }
+
+    public function client_contacts(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ClientContact::class)->withTrashed();
+    }
+
+    public function company_gateways(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(CompanyGateway::class)->withTrashed();
+    }
+
+    public function company_ledgers(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(CompanyLedger::class);
+    }
+
+    public function company_tokens(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(CompanyToken::class)->withTrashed();
+    }
+
+    public function credit_invitations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(CreditInvitation::class)->withTrashed();
+    }
+
+    public function credits(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Credit::class)->withTrashed();
+    }
+
+    public function designs(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Design::class)->withTrashed();
+    }
+
+    public function expense_categories(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ExpenseCategory::class)->withTrashed();
+    }
+
+    public function expenses(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Expense::class)->withTrashed();
+    }
+
+    public function group_settings(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(GroupSetting::class)->withTrashed();
+    }
+
+    public function invoice_invitations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(InvoiceInvitation::class)->withTrashed();
+    }
+
+    public function invoices(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Invoice::class)->withTrashed();
+    }
+
+    public function locations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Location::class)->withTrashed();
+    }
+
+    public function payment_terms(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(PaymentTerm::class)->withTrashed();
+    }
+
+    public function payments(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Payment::class)->withTrashed();
+    }
+
+    public function products(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Product::class)->withTrashed();
+    }
+
+    public function projects(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Project::class)->withTrashed();
+    }
+
+    public function purchase_order_invitations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(PurchaseOrderInvitation::class)->withTrashed();
+    }
+
+    public function purchase_orders(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(PurchaseOrder::class)->withTrashed();
+    }
+
+    public function quote_invitations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(QuoteInvitation::class)->withTrashed();
+    }
+
+    public function quotes(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Quote::class)->withTrashed();
+    }
+
+    public function recurring_expenses(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(RecurringExpense::class)->withTrashed();
+    }
+
+    public function recurring_invoice_invitations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(RecurringInvoiceInvitation::class)->withTrashed();
+    }
+
+    public function recurring_invoices(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(RecurringInvoice::class)->withTrashed();
+    }
+
+    public function recurring_quotes(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(RecurringQuote::class)->withTrashed();
+    }
+
+    public function recurring_quote_invitations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(RecurringQuoteInvitation::class)->withTrashed();
+    }
+
+    public function schedules(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Scheduler::class)->withTrashed();
+    }
+
+    public function system_logs(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(SystemLog::class)->withTrashed();
+    }
+
+    public function tasks(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Task::class)->withTrashed();
+    }
+
+    public function task_statuses(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(TaskStatus::class)->withTrashed();
+    }
+
+    public function tax_rates(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(TaxRate::class)->withTrashed();
+    }
+
+    public function vendor_contacts(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(VendorContact::class)->withTrashed();
+    }
+
+    public function vendors(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Vendor::class)->withTrashed();
+    }
+
+    public function webhooks(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Webhook::class)->withTrashed();
+    }
+
+    public function passkey_credentials(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(PasskeyCredential::class);
+    }
+
     /**
      * Returns a comma separated list of user permissions.
      *
@@ -461,7 +661,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
         /* If we have multiple parts, then make sure we search for the _all permission */
         if (count($parts) > 1) {
-            $all_permission = $parts[0].'_all';
+            $all_permission = $parts[0] . '_all';
 
             /*If this is a view search, make sure we add in the edit_{entity} AND edit_all permission into the checks*/
             if ($parts[0] == 'view') {
@@ -470,11 +670,11 @@ class User extends Authenticatable implements MustVerifyEmail
             }
         }
 
-        return  $this->isSuperUser() ||
-                (stripos($this->token()->cu->permissions ?? '', $permission) !== false) ||
-                (stripos($this->token()->cu->permissions ?? '', $all_permission) !== false) ||
-                (stripos($this->token()->cu->permissions ?? '', $edit_all) !== false) ||
-                (stripos($this->token()->cu->permissions ?? '', $edit_entity) !== false);
+        return  $this->isSuperUser()
+                || (stripos($this->token()->cu->permissions ?? '', $permission) !== false)
+                || (stripos($this->token()->cu->permissions ?? '', $all_permission) !== false)
+                || (stripos($this->token()->cu->permissions ?? '', $edit_all) !== false)
+                || (stripos($this->token()->cu->permissions ?? '', $edit_entity) !== false);
     }
 
     /**
@@ -493,11 +693,11 @@ class User extends Authenticatable implements MustVerifyEmail
         $all_permission = '__';
 
         if (count($parts) > 1) {
-            $all_permission = $parts[0].'_all';
+            $all_permission = $parts[0] . '_all';
         }
 
-        return  (stripos($this->token()->cu->permissions, $all_permission) !== false) ||
-                (stripos($this->token()->cu->permissions, $permission) !== false);
+        return  (stripos($this->token()->cu->permissions ?? '', $all_permission) !== false)
+                || (stripos($this->token()->cu->permissions ?? '', $permission) !== false);
     }
 
     /**
@@ -739,8 +939,8 @@ class User extends Authenticatable implements MustVerifyEmail
         $earnings = collect($this->referral_earnings);
 
         $updated_earnings = $earnings->map(function ($earning) use ($entity) {
-            if ($earning->account_key === $entity->account_key &&
-                $earning->period_ending === $entity->period_ending) {
+            if ($earning->account_key === $entity->account_key
+               && $earning->period_ending === $entity->period_ending) {
                 return $entity;
             }
 

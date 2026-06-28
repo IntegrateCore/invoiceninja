@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -25,6 +25,7 @@ use App\Models\Invoice;
 use App\Models\PaymentType;
 use App\Models\Product;
 use App\Models\Project;
+use App\Models\PurchaseOrder;
 use App\Models\Quote;
 use App\Models\RecurringInvoice;
 use App\Models\TaxRate;
@@ -51,7 +52,12 @@ class BaseTransformer
     public function parseDate($date)
     {
         if (stripos($date, "/") !== false && $this->company->settings->country_id != 840) {
-            $date = str_replace('/', '-', $date);
+            try {
+                $parsed_date = Carbon::createFromFormat('d/m/Y', $date);
+                return $parsed_date->format('Y-m-d');
+            } catch (\Exception $e) {
+                // Fall through to general parsing
+            }
         }
 
         try {
@@ -100,12 +106,12 @@ class BaseTransformer
 
     public function getInvoiceTypeId($data, $field, $default = '1')
     {
-        return isset($data[$field]) && $data[$field] ? (string)$data[$field] : $default;
+        return isset($data[$field]) && $data[$field] ? (string) $data[$field] : $default;
     }
 
     public function getNumber($data, $field, $default = 0)
     {
-        return (isset($data->$field) && $data->$field) ? (int)$data->$field : $default;
+        return (isset($data->$field) && $data->$field) ? (int) $data->$field : $default;
     }
 
     public function getString($data, $field, $default = '')
@@ -143,7 +149,7 @@ class BaseTransformer
         // if(is_string($frequency)){
         //     $frequency = strtolower(trim($frequency));
         // }
-        
+
         switch ($frequency) {
             case RecurringInvoice::FREQUENCY_DAILY:
             case 'daily':
@@ -159,6 +165,7 @@ class BaseTransformer
                 return RecurringInvoice::FREQUENCY_FOUR_WEEKS;
             case RecurringInvoice::FREQUENCY_MONTHLY:
             case 'monthly':
+            case 'month':
                 return RecurringInvoice::FREQUENCY_MONTHLY;
             case RecurringInvoice::FREQUENCY_TWO_MONTHS:
             case 'bimonthly':
@@ -174,6 +181,9 @@ class BaseTransformer
                 return RecurringInvoice::FREQUENCY_SIX_MONTHS;
             case RecurringInvoice::FREQUENCY_ANNUALLY:
             case 'yearly':
+            case 'annually':
+            case 'annual':
+            case 'year':
                 return RecurringInvoice::FREQUENCY_ANNUALLY;
             case RecurringInvoice::FREQUENCY_TWO_YEARS:
             case '2years':
@@ -194,15 +204,17 @@ class BaseTransformer
             return -1;
         }
 
-        return (int)$remaining_cycles;
+        return (int) $remaining_cycles;
     }
 
     public function getAutoBillFlag(string $option): string
     {
         switch ($option) {
+            case 'no':
             case 'off':
             case 'false':
                 return 'off';
+            case 'yes':
             case 'always':
             case 'true':
                 return 'always';
@@ -259,6 +271,12 @@ class BaseTransformer
             ];
 
             throw new \App\Import\ImportException("Error, you are attempting to import more clients than your plan allows ({$hosted_client_count})");
+        }
+
+        // 2026-03-05: If we don't have a client name or email, we can't create a client.
+        if (empty(trim($client_name ?? '')) && empty(trim($client_email ?? ''))) {
+            nlog("A Client Name or Email is required, none provided! {$client_name}, {$client_email}");
+            throw new \App\Import\ImportException("A Client Name or Email is required, none provided!");
         }
 
         $client_repository = app()->make(ClientRepository::class);
@@ -366,7 +384,7 @@ class BaseTransformer
      */
     public function getFloat($data, $field)
     {
-        
+
         if (array_key_exists($field, $data)) {
 
             if ($this->company->use_comma_as_decimal_place) {
@@ -439,7 +457,7 @@ class BaseTransformer
     }
 
     /**
-     * @param $name
+     * @param $key
      *
      * @return string
      */
@@ -481,18 +499,33 @@ class BaseTransformer
      *
      * @return int|null
      */
-    public function getCountryId($name)
+    public function getCountryId($name): ?int
     {
+        $name = trim((string) $name);
 
-        if (strlen(trim($name)) == 2) {
+        if ($name === '') {
+            return null;
+        }
+
+        if (is_numeric($name)) {
+            $country_id = Country::query()->where('id', (int) $name)->value('id');
+
+            return $country_id ? (int) $country_id : null;
+        }
+
+        if (strlen($name) == 2) {
             return $this->getCountryIdBy2($name);
         }
 
-        $country = Country::query()->whereRaw("LOWER(REPLACE(`name`, ' ' ,''))  = ?", [
-            strtolower(str_replace(' ', '', $name)),
-        ])->first();
+        $normalized_name = strtolower(str_replace(' ', '', $name));
 
-        return $country ? $country->id : null;
+        $country = Country::query()
+            ->whereRaw("LOWER(REPLACE(`name`, ' ' ,''))  = ?", [$normalized_name])
+            ->orWhereRaw("LOWER(REPLACE(`full_name`, ' ' ,''))  = ?", [$normalized_name])
+            ->orWhere('iso_3166_3', strtoupper($name))
+            ->first();
+
+        return $country ? (int) $country->id : null;
     }
 
     /**
@@ -500,11 +533,13 @@ class BaseTransformer
      *
      * @return int|null
      */
-    public function getCountryIdBy2($name)
+    public function getCountryIdBy2($name): ?int
     {
-        return Country::query()->where('iso_3166_2', $name)->exists()
-            ? Country::query()->where('iso_3166_2', $name)->first()->id
-            : null;
+        $country_id = Country::query()
+            ->where('iso_3166_2', strtoupper(trim((string) $name)))
+            ->value('id');
+
+        return $country_id ? (int) $country_id : null;
     }
 
     /**
@@ -653,6 +688,21 @@ class BaseTransformer
     }
 
     /**
+     * @param $purchase_order_number
+     *
+     * @return bool
+     */
+    public function hasPurchaseOrder($purchase_order_number)
+    {
+        return PurchaseOrder::query()->where('company_id', $this->company->id)
+            ->where('is_deleted', false)
+            ->whereRaw("LOWER(REPLACE(`number`, ' ' ,''))  = ?", [
+                strtolower(str_replace(' ', '', $purchase_order_number)),
+            ])
+            ->exists();
+    }
+
+    /**
      * @param $invoice_number
      *
      * @return int|null
@@ -768,17 +818,22 @@ class BaseTransformer
             ])
             ->first();
 
-        return $project ? $project->id : $this->createProject($name, $clientId);
+        if ($project) {
+            return $project->id;
+        }
+
+        if (! $clientId) {
+            return null;
+        }
+
+        return $this->createProject($name, $clientId);
     }
 
-    private function createProject($name, $clientId)
+    private function createProject(string $name, int $clientId): int
     {
         $project = ProjectFactory::create($this->company->id, $this->company->owner()->id);
         $project->name = $name;
-
-        if ($clientId) {
-            $project->client_id = $clientId;
-        }
+        $project->client_id = $clientId;
 
         $project->saveQuietly();
 

@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -15,8 +15,6 @@ namespace App\Http\Requests\ClientPortal\Quotes;
 use App\Http\ViewComposers\PortalComposer;
 use Illuminate\Foundation\Http\FormRequest;
 
-use function auth;
-
 class ProcessQuotesInBulkRequest extends FormRequest
 {
     public function authorize()
@@ -24,7 +22,7 @@ class ProcessQuotesInBulkRequest extends FormRequest
 
         auth()->guard('contact')->user()->loadMissing(['company']);
 
-        return (bool)(auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_QUOTES);
+        return (bool) (auth()->guard('contact')->user()->company->enabled_modules & PortalComposer::MODULE_QUOTES);
     }
 
     public function rules()

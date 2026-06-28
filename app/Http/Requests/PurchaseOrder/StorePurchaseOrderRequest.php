@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -47,7 +47,8 @@ class StorePurchaseOrderRequest extends Request
 
         $rules = [];
 
-        $rules['vendor_id'] = 'bail|required|exists:vendors,id,company_id,'.$user->company()->id.',is_deleted,0';
+        $rules['vendor_id'] = 'bail|required|exists:vendors,id,company_id,' . $user->company()->id . ',is_deleted,0';
+        $rules['client_id'] = ['nullable', 'bail', 'integer', Rule::exists('clients', 'id')->where('company_id', $user->company()->id)->where('is_deleted', 0)];
 
         $rules['number'] = ['nullable', Rule::unique('purchase_orders')->where('company_id', $user->company()->id)];
 
@@ -85,7 +86,7 @@ class StorePurchaseOrderRequest extends Request
         $input['amount'] = 0;
         $input['balance'] = 0;
         $input['total_taxes'] = 0;
-        
+
         if ($this->file('documents') instanceof \Illuminate\Http\UploadedFile) {
             $this->files->set('documents', [$this->file('documents')]);
         }

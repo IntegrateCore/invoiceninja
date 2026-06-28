@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -38,6 +38,8 @@ class UpdateProductRequest extends Request
         $rules = [];
         $rules['file'] = 'bail|sometimes|array';
         $rules['file.*'] = $this->fileValidation();
+        $rules['documents'] = 'bail|sometimes|array';
+        $rules['documents.*'] = $this->fileValidation();
 
         $rules['cost'] = 'numeric';
         $rules['price'] = 'numeric';
@@ -45,6 +47,7 @@ class UpdateProductRequest extends Request
         $rules['in_stock_quantity'] = 'sometimes|numeric';
         $rules['stock_notification_threshold'] = 'sometimes|numeric';
         $rules['stock_notification'] = 'sometimes|bool';
+        $rules['income_account_id'] = 'bail|sometimes|nullable|string|max:64';
 
         return $rules;
     }
@@ -72,6 +75,12 @@ class UpdateProductRequest extends Request
         if (array_key_exists('in_stock_quantity', $input) && request()->has('update_in_stock_quantity') && request()->input('update_in_stock_quantity') == 'true') {
         } elseif (array_key_exists('in_stock_quantity', $input)) {
             unset($input['in_stock_quantity']);
+        }
+
+        foreach (['notes', 'product_key', 'custom_value1', 'custom_value2', 'custom_value3', 'custom_value4'] as $field) {
+            if (isset($input[$field]) && is_string($input[$field])) {
+                $input[$field] = \App\Services\Pdf\Purify::clean($input[$field], true);
+            }
         }
 
         $this->replace($input);

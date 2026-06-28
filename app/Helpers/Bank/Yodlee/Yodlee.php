@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -41,6 +41,10 @@ class Yodlee
     protected string $admin_name;
 
     protected ?string $bank_account_id;
+
+    private ?string $accessToken = null;
+
+    private ?bool $accessTokenIsAdmin = null;
 
     public function __construct(?string $bank_account_id = null)
     {
@@ -93,6 +97,10 @@ class Yodlee
      */
     public function getAccessToken($is_admin = false)
     {
+        if ($this->accessToken && $this->accessTokenIsAdmin === $is_admin) {
+            return $this->accessToken;
+        }
+
         if ($is_admin) {
             $user = $this->admin_name;
         } else {
@@ -101,7 +109,10 @@ class Yodlee
 
         $response = $this->bankFormRequest('/auth/token', 'post', [], ['loginName' => $user]);
 
-        return $response->token->accessToken;
+        $this->accessToken = $response->token->accessToken;
+        $this->accessTokenIsAdmin = $is_admin;
+
+        return $this->accessToken;
     }
 
 
@@ -110,7 +121,7 @@ class Yodlee
         $token = $this->getAccessToken(true);
 
         $user['user'] = [
-            'loginName' => Str::uuid(),
+            'loginName' => Str::uuid()->toString(),
         ];
 
         /*
@@ -144,7 +155,7 @@ class Yodlee
         }
         */
 
-        $response = Http::withHeaders($this->getHeaders(["Authorization" => "Bearer {$token}"]))->post($this->getEndpoint(). "/user/register", $user);
+        $response = Http::withHeaders($this->getHeaders(["Authorization" => "Bearer {$token}"]))->post($this->getEndpoint() . "/user/register", $user);
 
         if ($response->successful()) {
             return $response->object();
@@ -159,7 +170,7 @@ class Yodlee
     {
         $token = $this->getAccessToken();
 
-        $response = Http::withHeaders($this->getHeaders(["Authorization" => "Bearer {$token}"]))->get($this->getEndpoint(). "/accounts", $params);
+        $response = Http::withHeaders($this->getHeaders(["Authorization" => "Bearer {$token}"]))->get($this->getEndpoint() . "/accounts", $params);
 
         if ($response->successful()) {
             $at = new AccountTransformer();
@@ -175,7 +186,7 @@ class Yodlee
     {
         $token = $this->getAccessToken();
 
-        $response = Http::withHeaders($this->getHeaders(["Authorization" => "Bearer {$token}"]))->get($this->getEndpoint(). "/accounts/{$account_id}", []);
+        $response = Http::withHeaders($this->getHeaders(["Authorization" => "Bearer {$token}"]))->get($this->getEndpoint() . "/accounts/{$account_id}", []);
 
         if ($response->successful()) {
             return true;
@@ -190,7 +201,7 @@ class Yodlee
     {
         $token = $this->getAccessToken();
 
-        $response = Http::withHeaders($this->getHeaders(["Authorization" => "Bearer {$token}"]))->get($this->getEndpoint(). "/accounts/{$account_id}", []);
+        $response = Http::withHeaders($this->getHeaders(["Authorization" => "Bearer {$token}"]))->get($this->getEndpoint() . "/accounts/{$account_id}", []);
 
         if ($response->successful()) {
             return $response->object();
@@ -205,7 +216,7 @@ class Yodlee
     {
         $token = $this->getAccessToken();
 
-        $response = Http::withHeaders($this->getHeaders(["Authorization" => "Bearer {$token}"]))->delete($this->getEndpoint(). "/accounts/{$account_id}", []);
+        $response = Http::withHeaders($this->getHeaders(["Authorization" => "Bearer {$token}"]))->delete($this->getEndpoint() . "/accounts/{$account_id}", []);
 
         if ($response->successful()) {
             return true;
@@ -220,7 +231,7 @@ class Yodlee
     {
         $token = $this->getAccessToken();
 
-        $response = Http::withHeaders($this->getHeaders(["Authorization" => "Bearer {$token}"]))->get($this->getEndpoint(). "/transactions", $params);
+        $response = Http::withHeaders($this->getHeaders(["Authorization" => "Bearer {$token}"]))->get($this->getEndpoint() . "/transactions", $params);
 
         if ($response->successful()) {
             $it = new IncomeTransformer();
@@ -236,7 +247,7 @@ class Yodlee
     {
         $token = $this->getAccessToken();
 
-        $response = Http::withHeaders($this->getHeaders(["Authorization" => "Bearer {$token}"]))->get($this->getEndpoint(). "/transactions/count", $params);
+        $response = Http::withHeaders($this->getHeaders(["Authorization" => "Bearer {$token}"]))->get($this->getEndpoint() . "/transactions/count", $params);
 
         if ($response->successful()) {
             return $response->object();
@@ -251,7 +262,7 @@ class Yodlee
     {
         $token = $this->getAccessToken();
 
-        $response = Http::withHeaders($this->getHeaders(["Authorization" => "Bearer {$token}"]))->get($this->getEndpoint(). "/transactions/categories", $params);
+        $response = Http::withHeaders($this->getHeaders(["Authorization" => "Bearer {$token}"]))->get($this->getEndpoint() . "/transactions/categories", $params);
 
         if ($response->successful()) {
             return $response->object();
@@ -279,7 +290,7 @@ class Yodlee
     {
         return array_merge($data, [
             'Api-Version' => '1.1',
-            'ContentType' => 'application/json'
+            'ContentType' => 'application/json',
         ]);
     }
 

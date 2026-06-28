@@ -5,16 +5,16 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Models;
 
+use App\DataMapper\QuoteSync;
 use App\Utils\Ninja;
 use App\Utils\Number;
-use App\DataMapper\QuoteSync;
 use Elastic\ScoutDriverPlus\Searchable;
 use Illuminate\Support\Carbon;
 use App\Utils\Traits\MakesHash;
@@ -29,7 +29,7 @@ use Laracasts\Presenter\PresentableTrait;
 use App\Helpers\Invoice\InvoiceSumInclusive;
 use App\Events\Quote\QuoteReminderWasEmailed;
 use Illuminate\Database\Eloquent\SoftDeletes;
-
+use App\Models\Traits\IndexableItems;
 /**
  * App\Models\Quote
  *
@@ -58,7 +58,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property bool $is_deleted
  * @property array|null $line_items
  * @property object|null $backup
- * @property object|null $sync
+ * @property QuoteSync|null $sync
  * @property string|null $footer
  * @property string|null $public_notes
  * @property string|null $private_notes
@@ -87,6 +87,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property float $exchange_rate
  * @property float $amount
  * @property float $balance
+ * @property int|null $location_id
+ * @property object|null $tax_data
  * @property float|null $partial
  * @property \Carbon\Carbon|null $partial_due_date
  * @property string|null $last_viewed
@@ -134,7 +136,7 @@ class Quote extends BaseModel
     use PresentableTrait;
     use MakesInvoiceValues;
     use Searchable;
-
+    Use IndexableItems;
     /**
      * Get the index name for the model.
      *
@@ -213,35 +215,41 @@ class Quote extends BaseModel
 
     public const STATUS_CONVERTED = 4;
 
+    public const STATUS_REJECTED = 5;
+
     public const STATUS_EXPIRED = -1;
 
-    public function toSearchableArray()
+    public function toSearchableArray(): array
     {
+        
         $locale = $this->company->locale();
         App::setLocale($locale);
 
         return [
-            'id' => $this->company->db.":".$this->id,
-            'name' => ctrans('texts.quote') . " " . ($this->number ?? '') . " | " . $this->client->present()->name() .  ' | ' . Number::formatMoney($this->amount, $this->company) . ' | ' . $this->translateDate($this->date, $this->company->date_format(), $locale),
+            'id' => $this->company->db . ":" . $this->id,
+            'name' => ctrans('texts.quote') . " " . ($this->number ?? '') . " | " . $this->client->present()->name() . ' | ' . Number::formatMoney($this->amount, $this->company) . ' | ' . $this->translateDate($this->date, $this->company->date_format(), $locale),
             'hashed_id' => $this->hashed_id,
-            'number' => (string)$this->number,
-            'is_deleted' => (bool)$this->is_deleted,
+            'user_id' => (string) $this->user_id,
+            'assigned_user_id' => (string) $this->assigned_user_id,
+            'number' => (string) $this->number,
+            'is_deleted' => (bool) $this->is_deleted,
             'amount' => (float) $this->amount,
             'balance' => (float) $this->balance,
             'due_date' => $this->due_date,
             'date' => $this->date,
-            'custom_value1' => (string)$this->custom_value1,
-            'custom_value2' => (string)$this->custom_value2,
-            'custom_value3' => (string)$this->custom_value3,
-            'custom_value4' => (string)$this->custom_value4,
+            'custom_value1' => (string) $this->custom_value1,
+            'custom_value2' => (string) $this->custom_value2,
+            'custom_value3' => (string) $this->custom_value3,
+            'custom_value4' => (string) $this->custom_value4,
             'company_key' => $this->company->company_key,
-            'po_number' => (string)$this->po_number,
+            'po_number' => (string) $this->po_number,
+            'line_items' => $this->indexLineItems(),
         ];
     }
 
     public function getScoutKey()
     {
-        return $this->company->db.":".$this->id;
+        return $this->company->db . ":" . $this->id;
     }
 
     public function getEntityType()
@@ -334,7 +342,7 @@ class Quote extends BaseModel
      *
      * @return InvoiceSumInclusive | InvoiceSum The quote calculator object getters
      */
-    public function calc(): InvoiceSumInclusive | InvoiceSum
+    public function calc(): InvoiceSumInclusive|InvoiceSum
     {
         $quote_calc = null;
 
@@ -373,17 +381,19 @@ class Quote extends BaseModel
     {
         switch ($status) {
             case self::STATUS_DRAFT:
-                return '<h5><span class="badge badge-light">'.ctrans('texts.draft').'</span></h5>';
+                return '<h5><span class="badge badge-light">' . ctrans('texts.draft') . '</span></h5>';
             case self::STATUS_SENT:
-                return '<h5><span class="badge badge-primary">'.ctrans('texts.pending').'</span></h5>';
+                return '<h5><span class="badge badge-primary">' . ctrans('texts.pending') . '</span></h5>';
             case self::STATUS_APPROVED:
-                return '<h5><span class="badge badge-success">'.ctrans('texts.approved').'</span></h5>';
+                return '<h5><span class="badge badge-success">' . ctrans('texts.approved') . '</span></h5>';
             case self::STATUS_EXPIRED:
-                return '<h5><span class="badge badge-danger">'.ctrans('texts.expired').'</span></h5>';
+                return '<h5><span class="badge badge-danger">' . ctrans('texts.expired') . '</span></h5>';
             case self::STATUS_CONVERTED:
-                return '<h5><span class="badge badge-light">'.ctrans('texts.converted').'</span></h5>';
+                return '<h5><span class="badge badge-light">' . ctrans('texts.converted') . '</span></h5>';
+            case self::STATUS_REJECTED:
+                return '<h5><span class="badge badge-danger">' . ctrans('texts.rejected') . '</span></h5>';
             default:
-                return '<h5><span class="badge badge-light">'.ctrans('texts.draft').'</span></h5>';
+                return '<h5><span class="badge badge-light">' . ctrans('texts.draft') . '</span></h5>';
         }
     }
 
@@ -400,6 +410,8 @@ class Quote extends BaseModel
                 return ctrans('texts.expired');
             case self::STATUS_CONVERTED:
                 return ctrans('texts.converted');
+            case self::STATUS_REJECTED:
+                return ctrans('texts.rejected');
             default:
                 return ctrans('texts.draft');
 
@@ -414,6 +426,15 @@ class Quote extends BaseModel
     public function isApproved(): bool
     {
         if ($this->status_id === $this::STATUS_APPROVED) {
+            return true;
+        }
+
+        return false;
+    }
+
+    public function isRejected(): bool
+    {
+        if ($this->status_id === $this::STATUS_REJECTED) {
             return true;
         }
 

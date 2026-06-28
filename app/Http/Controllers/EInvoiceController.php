@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -14,19 +14,19 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\EInvoice\HealthcheckRequest;
 use App\Http\Requests\EInvoice\ShowQuotaRequest;
-use App\Http\Requests\EInvoice\ValidateEInvoiceRequest;
 use App\Http\Requests\EInvoice\UpdateEInvoiceConfiguration;
-use App\Services\EDocument\Standards\Validation\Peppol\EntityLevel;
+use App\Http\Requests\EInvoice\ValidateEInvoiceRequest;
+use App\Services\EDocument\Gateway\Storecove\StorecoveDeliveryMap;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Http;
 use InvoiceNinja\EInvoice\Models\Peppol\BranchType\FinancialInstitutionBranch;
-use InvoiceNinja\EInvoice\Models\Peppol\FinancialInstitutionType\FinancialInstitution;
-use InvoiceNinja\EInvoice\Models\Peppol\FinancialAccountType\PayeeFinancialAccount;
-use InvoiceNinja\EInvoice\Models\Peppol\PaymentMeans;
 use InvoiceNinja\EInvoice\Models\Peppol\CardAccountType\CardAccount;
-use InvoiceNinja\EInvoice\Models\Peppol\IdentifierType\ID;
 use InvoiceNinja\EInvoice\Models\Peppol\CodeType\CardTypeCode;
 use InvoiceNinja\EInvoice\Models\Peppol\CodeType\PaymentMeansCode;
+use InvoiceNinja\EInvoice\Models\Peppol\FinancialAccountType\PayeeFinancialAccount;
+use InvoiceNinja\EInvoice\Models\Peppol\FinancialInstitutionType\FinancialInstitution;
+use InvoiceNinja\EInvoice\Models\Peppol\IdentifierType\ID;
+use InvoiceNinja\EInvoice\Models\Peppol\PaymentMeans;
 
 class EInvoiceController extends BaseController
 {
@@ -42,12 +42,29 @@ class EInvoiceController extends BaseController
      */
     public function validateEntity(ValidateEInvoiceRequest $request)
     {
+
+        $user = auth()->user();
+
+        if (!in_array($user->company()->settings->e_invoice_type, ['VERIFACTU', 'PEPPOL'])) {
+
+            $data = [
+                'passes' => true,
+                'invoices' => [],
+                'recurring_invoices' => [],
+                'clients' => [],
+                'companies' => [],
+            ];
+
+            return response()->json($data, 200);
+        }
+
         $el = $request->getValidatorClass();
 
         $data = [];
-        
+
         match ($request->entity) {
             'invoices' => $data = $el->checkInvoice($request->getEntity()),
+            'recurring_invoices' => $data = $el->checkRecurringInvoice($request->getEntity()),
             'clients' => $data = $el->checkClient($request->getEntity()),
             'companies' => $data = $el->checkCompany($request->getEntity()),
             default => $data['passes'] = false,
@@ -87,7 +104,23 @@ class EInvoiceController extends BaseController
                 $pm->CardAccount = $card_account;
             }
 
-            if (isset($payment_means['iban'])) {
+            if (isset($payment_means['code']) && $payment_means['code'] == '58') {
+                $fib = new FinancialInstitutionBranch();
+                $fi = new FinancialInstitution();
+                $bic_id = new ID();
+                $bic_id->value = $payment_means['bic_swift'];
+                $fi->ID = $bic_id;
+                $fib->FinancialInstitution = $fi;
+                $pfa = new PayeeFinancialAccount();
+                $iban_id = new ID();
+                $iban_id->value = $payment_means['iban'];
+                $pfa->ID = $iban_id;
+                $pfa->Name = $payment_means['account_holder'] ?? 'SEPA_CREDIT_TRANSFER';
+                $pfa->FinancialInstitutionBranch = $fib;
+
+                $pm->PayeeFinancialAccount = $pfa;
+
+            } elseif (isset($payment_means['iban'])) {
                 $fib = new FinancialInstitutionBranch();
                 $fi = new FinancialInstitution();
                 $bic_id = new ID();
@@ -132,7 +165,7 @@ class EInvoiceController extends BaseController
     public function quota(ShowQuotaRequest $request): JsonResponse
     {
         nlog(["quota" => $request->all()]);
-        
+
         /** @var \App\Models\Company $company */
         $company = auth()->user()->company();
 
@@ -165,6 +198,19 @@ class EInvoiceController extends BaseController
         ]);
     }
 
+    /**
+     * Returns the static Peppol delivery map for the UI.
+     *
+     * Per country: which classifications are routable and
+     * what client identifiers are required for each.
+     */
+    public function deliveryMap(): JsonResponse
+    {
+        $deliveryMap = new StorecoveDeliveryMap();
+
+        return response()->json($deliveryMap->all());
+    }
+
     public function healthcheck(HealthcheckRequest $request): JsonResponse
     {
         /** @var \App\Models\User $user */
@@ -174,7 +220,7 @@ class EInvoiceController extends BaseController
             ->withHeaders([
                 'Content-Type' => 'application/json',
                 'Accept' => 'application/json',
-                'X-EInvoice-Token' => $user->account->e_invoicing_token
+                'X-EInvoice-Token' => $user->account->e_invoicing_token,
             ])
             ->post('/api/einvoice/health_check', data: [
                 'license' => config('ninja.license_key'),

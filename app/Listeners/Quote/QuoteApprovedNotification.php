@@ -26,9 +26,7 @@ class QuoteApprovedNotification implements ShouldQueue
 
     public $delay = 8;
 
-    public function __construct()
-    {
-    }
+    public function __construct() {}
 
     /**
      * Handle the event.
@@ -50,7 +48,7 @@ class QuoteApprovedNotification implements ShouldQueue
             /* The User */
             $user = $company_user->user;
 
-            if (! $user) {
+            if ($company_user->trashed() || ! $user ) {
                 continue;
             }
 

@@ -58,7 +58,7 @@ class PurchaseOrderExport extends BaseExport
 
         $query = PurchaseOrder::query()
                         ->withTrashed()
-                        ->with('vendor')
+                        ->with('vendor', 'location')
                         ->whereHas('vendor', function ($q) {
                             $q->where('is_deleted', false);
                         })
@@ -102,7 +102,7 @@ class PurchaseOrderExport extends BaseExport
             return ['identifier' => $key, 'display_value' => $headerdisplay[$value]];
         })->toArray();
 
-        $report = $query->cursor()
+        $report = $this->streamQuery($query)
                 ->map(function ($resource) {
 
                     /** @var \App\Models\PurchaseOrder $resource */
@@ -125,7 +125,7 @@ class PurchaseOrderExport extends BaseExport
         //insert the header
         $this->csv->insertOne($this->buildHeader());
 
-        $query->cursor()
+        $this->streamQuery($query)
             ->each(function ($purchase_order) {
 
                 /** @var \App\Models\PurchaseOrder $purchase_order */
@@ -135,7 +135,7 @@ class PurchaseOrderExport extends BaseExport
         return $this->csv->toString();
     }
 
-    private function buildRow(PurchaseOrder $purchase_order): array
+    protected function buildRow(PurchaseOrder $purchase_order): array
     {
         $transformed_purchase_order = $this->purchase_order_transformer->transform($purchase_order);
 
@@ -184,6 +184,9 @@ class PurchaseOrderExport extends BaseExport
             $entity['purchase_order.assigned_user_id'] = $purchase_order->assigned_user ? $purchase_order->assigned_user->present()->name() : '';
         }
 
+        if (in_array('purchase_order.subtotal', $this->input['report_keys'])) {
+            $entity['purchase_order.subtotal'] = $purchase_order->calc()->getSubTotal();
+        }
 
         return $entity;
     }

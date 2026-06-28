@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  *
@@ -30,6 +30,9 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Mail\Mailables\Address;
 use App\Helpers\Bank\Nordigen\Transformer\AccountTransformer;
 use App\Helpers\Bank\Nordigen\Transformer\TransactionTransformer;
+use Nordigen\NordigenPHP\Exceptions\InstitutionExceptions\RateLimitError;
+use Nordigen\NordigenPHP\Exceptions\InstitutionExceptions\AccessExpiredError;
+use Nordigen\NordigenPHP\Exceptions\InstitutionExceptions\AccountInactiveError;
 
 class Nordigen
 {
@@ -102,13 +105,13 @@ class Nordigen
                 $this->client->endUserAgreement->getEndUserAgreements()['results'],
                 function (array $eua) use ($institutionId, $requiredScopes, $accessDays, $txDays): bool {
                     $isNotExpired = !isset($eua['status']) || $eua['status'] !== 'EXPIRED';
-                    
+
                     return $eua['institution_id'] === $institutionId
-                        && $eua['accepted'] === null
-                        && $isNotExpired
-                        && $eua['max_historical_days'] >= $txDays
-                        && $eua['access_valid_for_days'] >= $accessDays
-                        && !array_diff($requiredScopes, $eua['access_scope'] ?? []);
+                       && $eua['accepted'] === null
+                       && $isNotExpired
+                       && $eua['max_historical_days'] >= $txDays
+                       && $eua['access_valid_for_days'] >= $accessDays
+                       && !array_diff($requiredScopes, $eua['access_scope'] ?? []);
                 },
                 null
             );
@@ -177,7 +180,7 @@ class Nordigen
         );
     }
 
-    
+
     /**
      * validAgreement
      * @param string $institution_id
@@ -191,14 +194,14 @@ class Nordigen
         $nc = new \App\Helpers\Bank\Nordigen\Http\NordigenClient($this->client->getAccessToken());
         $requisitions = $nc->getAllRequisitions();
 
-        $requisition = $requisitions->filter(function($requisition) use ($institution_id, $_accounts){
-            if($requisition['institution_id'] == $institution_id && !empty(array_intersect($requisition['accounts'], $_accounts))){
+        $requisition = $requisitions->filter(function ($requisition) use ($institution_id, $_accounts) {
+            if ($requisition['institution_id'] == $institution_id && !empty(array_intersect($requisition['accounts'], $_accounts))) {
                 return $requisition;
             }
         });
 
         return $requisition->first()->toArray() ??  null;
-        
+
     }
 
     public function getRequisition(string $requisitionId)
@@ -229,19 +232,19 @@ class Nordigen
             // }
             // else{
 
-                $out->data = [
-                    'iban' => $out->metadata['iban'],
-                    'ownerName' => $out->metadata['owner_name'],
-                ];
-                $out->balances = [
-                    [
-                        'balanceType' => '',
-                        'balanceAmount' => [
-                            'amount' => 0,
-                            'currency' => '',
-                        ],
+            $out->data = [
+                'iban' => $out->metadata['iban'],
+                'ownerName' => $out->metadata['owner_name'],
+            ];
+            $out->balances = [
+                [
+                    'balanceType' => '',
+                    'balanceAmount' => [
+                        'amount' => 0,
+                        'currency' => '',
                     ],
-                ];
+                ],
+            ];
             // }
 
             $it = new AccountTransformer();
@@ -280,16 +283,49 @@ class Nordigen
 
             return $account;
 
+        } catch (RateLimitError $e) {
+
+            nlog("Nordigen:: AccountActiveStatus:: rate limited for account {$account_id}");
+
+            return ['status' => 'RATE_LIMITED', 'code' => 429];
+
+        } catch (AccessExpiredError $e) {
+
+            return ['status' => 'EXPIRED'];
+
+        } catch (AccountInactiveError $e) {
+
+            return ['status' => 'SUSPENDED', 'error' => $e->getMessage()];
+
         } catch (\Exception $e) {
 
             nlog("Nordigen:: AccountActiveStatus:: {$e->getMessage()} {$e->getCode()}");
 
             if (strpos($e->getMessage(), 'Invalid Account ID') !== false) {
-                ['status' => 'Invalid Account ID'];
+                return ['status' => 'Invalid Account ID'];
             }
 
-            return ['status' => 'EXPIRED'];
+            // Do not collapse unknown/transient errors to EXPIRED — that disables healthy
+            // accounts on a rate-limit/timeout/5xx and emails the user a false reconnect notice.
+            // Leave the integration enabled; the requisition gate is the authority on permanent failure.
+            return ['status' => 'TRANSIENT_ERROR', 'error' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Cached, deduped requisition status check.
+     *
+     * Keyed by requisition_id so multiple bank_integrations sharing a requisition trigger
+     * a single upstream call. The key is the requisition_id, so a reconnect (which mints a
+     * new requisition_id) is never served a stale cached result.
+     */
+    public function requisitionStatus(string $requisitionId): ?string
+    {
+        return Cache::remember("nordigen_req_status:{$requisitionId}", 60 * 60 * 3, function () use ($requisitionId) {
+            $nc = new \App\Helpers\Bank\Nordigen\Http\NordigenClient($this->client->getAccessToken());
+
+            return $nc->getRequisition($requisitionId)['status'] ?? null;
+        });
     }
 
 
@@ -297,10 +333,10 @@ class Nordigen
      * getTransactions
      *
      * @param  string $accountId
-     * @param  string $dateFrom
+     * @param  ?string $dateFrom
      * @return array
      */
-    public function getTransactions(Company $company, string $accountId, string $dateFrom = null): array
+    public function getTransactions(Company $company, string $accountId, ?string $dateFrom = null): array
     {
         $transactionResponse = $this->client->account($accountId)->getAccountTransactions($dateFrom);
 
@@ -310,7 +346,7 @@ class Nordigen
 
     public function disabledAccountEmail(BankIntegration $bank_integration): void
     {
-        $cache_key = "email_quota:{$bank_integration->company->company_key}:{$bank_integration->id}";
+        $cache_key = "email_quota:{$bank_integration->account->key}:bank_integration_notified";
 
         if (Cache::has($cache_key)) {
             return;

@@ -1,5 +1,13 @@
 <?php
-
+/**
+ * Invoice Ninja (https://invoiceninja.com).
+ *
+ * @link https://github.com/invoiceninja/invoiceninja source repository
+ *
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
+ *
+ * @license https://www.elastic.co/licensing/elastic-license
+ */
 namespace App\Services\EDocument\Standards\Verifactu\Models;
 
 use DOMDocument;
@@ -35,9 +43,9 @@ class IDFactura extends BaseXmlModel
         return $this->numSerieFactura;
     }
 
-    public function setNumSerieFactura(string $numSerieFactura): self
+    public function setNumSerieFactura(?string $numSerieFactura = ''): self
     {
-        $this->numSerieFactura = $numSerieFactura;
+        $this->numSerieFactura = $numSerieFactura ?? '&';
         return $this;
     }
 

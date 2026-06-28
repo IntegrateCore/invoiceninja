@@ -47,7 +47,7 @@ class PaymentLibrariesSeeder extends Seeder
             ['id' => 17, 'name' => 'Pin', 'provider' => 'Pin', 'key' => '0749cb92a6b36c88bd9ff8aabd2efcab', 'fields' => '{"secretKey":"","testMode":false}'],
             ['id' => 18, 'name' => 'SagePay Direct', 'provider' => 'SagePay_Direct', 'key' => '4c8f4e5d0f353a122045eb9a60cc0f2d', 'fields' => '{"vendor":"","testMode":false,"referrerId":""}'],
             ['id' => 19, 'name' => 'SecurePay DirectPost', 'provider' => 'SecurePay_DirectPost', 'key' => '8036a5aadb2bdaafb23502da8790b6a2', 'fields' => '{"merchantId":"","transactionPassword":"","testMode":false,"enable_ach":"","enable_sofort":"","enable_apple_pay":"","enable_alipay":""}'],
-            ['id' => 20, 'name' => 'Stripe', 'provider' => 'Stripe', 'sort_order' => 1, 'key' => 'd14dd26a37cecc30fdd65700bfb55b23', 'fields' => '{"publishableKey":"","apiKey":"","appleDomainVerification":""}'],
+            ['id' => 20, 'name' => 'Stripe', 'provider' => 'Stripe', 'sort_order' => 1, 'key' => 'd14dd26a37cecc30fdd65700bfb55b23', 'fields' => '{"publishableKey":"","apiKey":"","webhookSecret":"","appleDomainVerification":""}'],
             ['id' => 21, 'name' => 'TargetPay Direct eBanking', 'provider' => 'TargetPay_Directebanking', 'key' => 'd14dd26a37cdcc30fdd65700bfb55b23', 'fields' => '{"subAccountId":""}'],
             ['id' => 22, 'name' => 'TargetPay Ideal', 'provider' => 'TargetPay_Ideal', 'key' => 'ea3b328bd72d381387281c3bd83bd97c', 'fields' => '{"subAccountId":""}'],
             ['id' => 23, 'name' => 'TargetPay Mr Cash', 'provider' => 'TargetPay_Mrcash', 'key' => 'a0035fc0d87c4950fb82c73e2fcb825a', 'fields' => '{"subAccountId":""}'],
@@ -66,7 +66,7 @@ class PaymentLibrariesSeeder extends Seeder
             ['id' => 36, 'name' => 'AGMS', 'provider' => 'Agms', 'key' => '1b3c6f3ccfea4f5e7eadeae188cccd7f', 'fields' => '{"username":"","password":"","apiKey":"","accountNumber":""}'],
             ['id' => 37, 'name' => 'Barclays', 'provider' => 'BarclaysEpdq\Essential', 'key' => '7cba6ce5c125f9cb47ea8443ae671b68', 'fields' => '{"clientId":"","testMode":false,"language":"en_US","callbackMethod":"POST"}'],
             ['id' => 38, 'name' => 'Cardgate', 'provider' => 'Cardgate', 'key' => 'b98cfa5f750e16cee3524b7b7e78fbf6', 'fields' => '{"merchantId":"","language":"nl","apiKey":"","siteId":"","notifyUrl":"","returnUrl":"","cancelUrl":"","testMode":false}'],
-            ['id' => 39, 'name' => 'Checkout.com', 'provider' => 'CheckoutCom', 'key' => '3758e7f7c6f4cecf0f4f348b9a00f456', 'fields' => '{"secretApiKey":"","publicApiKey":"","testMode":false,"threeds":false}'],
+            ['id' => 39, 'name' => 'Checkout.com', 'provider' => 'CheckoutCom', 'key' => '3758e7f7c6f4cecf0f4f348b9a00f456', 'fields' => '{"secretApiKey":"","publicApiKey":"","testMode":false,"threeds":false,"processingChannelId":""}'],
             ['id' => 40, 'name' => 'Creditcall', 'provider' => 'Creditcall', 'key' => 'cbc7ef7c99d31ec05492fbcb37208263', 'fields' => '{"terminalId":"","transactionKey":"","testMode":false,"verifyCvv":true,"verifyAddress":false,"verifyZip":false}'],
             ['id' => 41, 'name' => 'Cybersource', 'provider' => 'Cybersource', 'key' => 'e186a98d3b079028a73390bdc11bdb82', 'fields' => '{"profileId":"","secretKey":"","accessKey":"","testMode":false}'],
             ['id' => 42, 'name' => 'ecoPayz', 'provider' => 'Ecopayz', 'key' => '761040aca40f685d1ab55e2084b30670', 'fields' => '{"merchantId":"","merchantPassword":"","merchantAccountNumber":"","testMode":false}'],
@@ -92,6 +92,8 @@ class PaymentLibrariesSeeder extends Seeder
             ['id' => 63, 'name' => 'Rotessa', 'is_offsite' => false, 'sort_order' => 22, 'provider' => 'Rotessa', 'key' => '91be24c7b792230bced33e930ac61676', 'fields' => '{"apiKey":"", "testMode":false}'],
             ['id' => 64, 'name' => 'CBA PowerBoard', 'is_offsite' => false, 'sort_order' => 26, 'provider' => 'CBAPowerBoard', 'key' => 'b67581d804dbad1743b61c57285142ad', 'fields' => '{"publicKey":"", "secretKey":"", "testMode":false, "gatewayId":"", "amex":false, "ausbc":false, "discover":false, "japcb":false, "laser":false, "mastercard":true, "solo":false, "visa":true, "visa_white":false}'],
             ['id' => 65, 'name' => 'Blockonomics', 'is_offsite' => false, 'sort_order' => 27, 'provider' => 'Blockonomics', 'key' => 'wbhf02us6owgo7p4nfjd0ymssdshks4d', 'fields' => '{"apiKey":""}'],
+            ['id' => 66, 'name' => 'LawPay', 'is_offsite' => false, 'sort_order' => 28, 'provider' => 'LawPay', 'key' => 'f4lafbnygsmkflagbqp7zqnfpgeoekdn', 'fields' => '{"publicKey":"","secretKey":"","testMode":false}'],
+            ['id' => 67, 'name' => 'payware', 'is_offsite' => false, 'sort_order' => 29, 'provider' => 'Payware', 'key' => 'b0a6294fca4488c2bab58f3e11e3c623', 'fields' => '{"partnerId":"","vposId":"","paywarePublicKey":"","testMode":false,"timeToLive":"600"}', 'default_gateway_type_id' => 30],
         ];
 
         foreach ($gateways as $gateway) {
@@ -108,7 +110,7 @@ class PaymentLibrariesSeeder extends Seeder
 
         Gateway::query()->update(['visible' => 0]);
 
-        Gateway::whereIn('id', [1, 3, 7, 11, 15, 20, 39, 46, 55, 50, 57, 52, 58, 59, 60, 62, 63])->update(['visible' => 1]);
+        Gateway::whereIn('id', [1, 3, 7, 11, 15, 20, 39, 46, 55, 50, 57, 52, 58, 59, 60, 62, 63, 67])->update(['visible' => 1]);
 
         if (Ninja::isHosted()) {
             Gateway::whereIn('id', [20, 49])->update(['visible' => 0]);

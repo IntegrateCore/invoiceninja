@@ -32,9 +32,14 @@ class RecurringInvoiceTransformer extends BaseTransformer
      */
     public function transform($line_items_data)
     {
-        $invoice_data = reset($line_items_data);
+        if (!empty($line_items_data) && is_array(reset($line_items_data))) {
+            $invoice_data = reset($line_items_data);
+        } else {
+            $invoice_data = $line_items_data;
+            $line_items_data = [$invoice_data];
+        }
 
-        if ($this->hasRecurringInvoice($invoice_data['invoice.number'])) {
+        if (isset($invoice_data['invoice.number']) && $this->hasRecurringInvoice($invoice_data['invoice.number'])) {
             throw new ImportException('Invoice number already exists');
         }
 
@@ -125,6 +130,10 @@ class RecurringInvoiceTransformer extends BaseTransformer
                 $invoice_data,
                 'invoice.exchange_rate'
             ),
+            'is_amount_discount' => filter_var(
+                $this->getString($invoice_data, 'invoice.is_amount_discount'),
+                FILTER_VALIDATE_BOOLEAN
+            ),
             'status_id' => RecurringInvoice::STATUS_DRAFT,
             // 'status_id' => $invoiceStatusMap[
             //         ($status = strtolower(
@@ -135,10 +144,10 @@ class RecurringInvoiceTransformer extends BaseTransformer
                 $this->getString($invoice_data, 'invoice.auto_bill')
             ),
             'frequency_id' => $this->getFrequency(
-                isset($invoice_data['invoice.frequency_id']) ? $invoice_data['invoice.frequency_id'] : 'monthly'
+                $invoice_data['invoice.frequency_id'] ?? 'monthly'
             ),
             'remaining_cycles' => $this->getRemainingCycles(
-                isset($invoice_data['invoice.remaining_cycles']) ? $invoice_data['invoice.remaining_cycles'] : -1
+                $invoice_data['invoice.remaining_cycles'] ?? -1
             ),
             // 'archived' => $status === 'archived',
         ];
@@ -162,8 +171,7 @@ class RecurringInvoiceTransformer extends BaseTransformer
                 'discount' => $this->getFloat($record, 'item.discount'),
                 'is_amount_discount' => filter_var(
                     $this->getString($record, 'item.is_amount_discount'),
-                    FILTER_VALIDATE_BOOLEAN,
-                    FILTER_NULL_ON_FAILURE
+                    FILTER_VALIDATE_BOOLEAN
                 ),
                 'tax_name1' => $this->getString($record, 'item.tax_name1'),
                 'tax_rate1' => $this->getFloat($record, 'item.tax_rate1'),

@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -14,6 +14,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\License\CheckRequest;
 use App\Models\Account;
+use App\Services\License\WhiteLabelRenewalService;
 use App\Utils\CurlUtils;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -100,7 +101,7 @@ class LicenseController extends BaseController
                 return $this->v5ClaimLicense($license_key, $product_id);
             }
 
-            $url = config('ninja.license_url')."/claim_license?license_key={$license_key}&product_id={$product_id}&get_date=true";
+            $url = config('ninja.license_url') . "/claim_license?license_key={$license_key}&product_id={$product_id}&get_date=true";
             $data = trim(CurlUtils::get($url));
 
             if ($data == Account::RESULT_FAILURE) {
@@ -226,10 +227,14 @@ class LicenseController extends BaseController
     {
         $account = auth()->user()->account;
 
-        if ($account->plan == 'white_label' && Carbon::parse($account->plan_expires)->lt(now())) {
-            $account->plan = null;
-            $account->plan_expires = null;
-            $account->save();
+        if ($account->plan == 'white_label' && $account->plan_expires && Carbon::parse($account->plan_expires)->lt(now())) {
+            $result = (new WhiteLabelRenewalService())->checkAndRenew($account);
+
+            if ($result === false) {
+                $account->plan = null;
+                $account->plan_expires = null;
+                $account->save();
+            }
         }
     }
 

@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -25,7 +25,7 @@ namespace App\Models;
  * @property bool $is_offsite
  * @property bool $is_secure
  * @property object|null|string $fields
- * @property string $default_gateway_type_id
+ * @property int $default_gateway_type_id
  * @property int|null $created_at
  * @property int|null $updated_at
  * @property-read mixed $options
@@ -49,6 +49,7 @@ namespace App\Models;
  * @method static \Illuminate\Database\Eloquent\Builder|Gateway whereVisible($value)
  * @mixin \Eloquent
  */
+#[\AllowDynamicProperties]
 class Gateway extends StaticModel
 {
     protected $casts = [
@@ -109,6 +110,8 @@ class Gateway extends StaticModel
             $link = 'https://rotessa.com';
         } elseif ($this->id == 65) {
             $link = 'https://help.blockonomics.co/a/solutions/articles/33000291849';
+        } elseif ($this->id == 67) {
+            $link = 'https://payware.eu';
         }
 
         return $link;
@@ -147,7 +150,7 @@ class Gateway extends StaticModel
             case 56:
                 return [
                     GatewayType::CREDIT_CARD => ['refund' => true, 'token_billing' => true, 'webhooks' => ['payment_intent.succeeded', 'charge.refunded', 'payment_intent.payment_failed']],
-                    GatewayType::BANK_TRANSFER => ['refund' => true, 'token_billing' => true, 'webhooks' => ['source.chargeable', 'charge.refunded','charge.succeeded', 'customer.source.updated', 'payment_intent.processing', 'payment_intent.payment_failed', 'charge.failed']],
+                    GatewayType::BANK_TRANSFER => ['refund' => true, 'token_billing' => true, 'webhooks' => ['source.chargeable', 'charge.refunded', 'charge.succeeded', 'customer.source.updated', 'setup_intent.succeeded', 'payment_intent.processing', 'payment_intent.payment_failed', 'charge.failed']],
                     GatewayType::DIRECT_DEBIT => ['refund' => false, 'token_billing' => false, 'webhooks' => ['payment_intent.processing', 'charge.refunded', 'payment_intent.succeeded', 'payment_intent.partially_funded', 'payment_intent.payment_failed']],
                     GatewayType::ALIPAY => ['refund' => false, 'token_billing' => false],
                     GatewayType::APPLE_PAY => ['refund' => false, 'token_billing' => false],
@@ -165,7 +168,17 @@ class Gateway extends StaticModel
                     GatewayType::FPX => ['refund' => true, 'token_billing' => true, 'webhooks' => ['source.chargeable', 'charge.succeeded', 'charge.refunded', 'charge.failed',]],
                 ];
             case 39:
-                return [GatewayType::CREDIT_CARD => ['refund' => true, 'token_billing' => true, 'webhooks' => [' ']]]; //Checkout
+                return [
+                    GatewayType::CREDIT_CARD => ['refund' => true, 'token_billing' => true, 'webhooks' => ['payment_approved']],
+                    GatewayType::IDEAL       => ['refund' => true, 'token_billing' => false, 'webhooks' => ['payment_approved']],
+                    GatewayType::BANCONTACT  => ['refund' => true, 'token_billing' => false, 'webhooks' => ['payment_approved']],
+                    GatewayType::GIROPAY     => ['refund' => true, 'token_billing' => false, 'webhooks' => ['payment_approved']],
+                    GatewayType::EPS         => ['refund' => true, 'token_billing' => false, 'webhooks' => ['payment_approved']],
+                    GatewayType::SOFORT      => ['refund' => true, 'token_billing' => false, 'webhooks' => ['payment_approved']],
+                    GatewayType::PRZELEWY24  => ['refund' => true, 'token_billing' => false, 'webhooks' => ['payment_approved']],
+                    GatewayType::PAYPAL      => ['refund' => true, 'token_billing' => false, 'webhooks' => ['payment_approved']],
+                    GatewayType::APPLE_PAY   => ['refund' => true, 'token_billing' => false, 'webhooks' => ['payment_approved']],
+                ]; //Checkout
             case 46:
                 return [GatewayType::CREDIT_CARD => ['refund' => true, 'token_billing' => true]]; //Paytrace
             case 49:
@@ -231,14 +244,14 @@ class Gateway extends StaticModel
                 return [
                     GatewayType::CRYPTO => ['refund' => true, 'token_billing' => false, 'webhooks' => ['confirmed', 'paid_out', 'failed', 'fulfilled']],
                 ]; //BTCPay
-	    case 63:
-		return [
+            case 63:
+                return [
                     GatewayType::BANK_TRANSFER => [
                         'refund' => false,
                         'token_billing' => true,
                         'webhooks' => [],
-                        ],
-                    GatewayType::ACSS => ['refund' => false, 'token_billing' => true, 'webhooks' => []]
+                    ],
+                    GatewayType::ACSS => ['refund' => false, 'token_billing' => true, 'webhooks' => []],
                 ]; // Rotessa
             case 64: //b67581d804dbad1743b61c57285142ad - powerboard
                 return [
@@ -248,6 +261,15 @@ class Gateway extends StaticModel
                 return [
                     GatewayType::CRYPTO => ['refund' => false, 'token_billing' => false, 'webhooks' => ['confirmed', 'paid_out', 'failed', 'fulfilled']],
                 ]; //Blockonomics
+            case 66:
+                return [
+                    GatewayType::CREDIT_CARD => ['refund' => true, 'token_billing' => true],
+                    GatewayType::BANK_TRANSFER => ['refund' => true, 'token_billing' => true],
+                ]; //LawPay
+            case 67:
+                return [
+                    GatewayType::MOBILE_PAYMENT => ['refund' => false, 'token_billing' => false, 'webhooks' => ['CONFIRMED', 'DECLINED', 'FAILED', 'CANCELLED', 'EXPIRED']],
+                ]; //payware
             default:
                 return [];
         }

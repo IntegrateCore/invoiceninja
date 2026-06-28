@@ -28,7 +28,15 @@ class InvoiceTransformer extends BaseTransformer
      */
     public function transform($line_items_data)
     {
-        $invoice_data = reset($line_items_data);
+        // Handle both array of arrays and single array scenarios
+        if (is_array($line_items_data) && isset($line_items_data[0]) && is_array($line_items_data[0])) {
+            // Array of arrays - take the first invoice
+            $invoice_data = reset($line_items_data);
+        } else {
+            // Single array - use as-is
+            $invoice_data = $line_items_data;
+            $line_items_data = [$line_items_data];
+        }
 
         if ($this->hasInvoice($invoice_data['Invoice Number'])) {
             throw new ImportException('Invoice number already exists');
@@ -63,11 +71,11 @@ class InvoiceTransformer extends BaseTransformer
                 $description = $this->getString($record, 'Transaction Line Description');
 
                 // Remove duplicate data from description
-                if (substr($description, 0, strlen($customer_name) + 3) === $customer_name.' - ') {
+                if (substr($description, 0, strlen($customer_name) + 3) === $customer_name . ' - ') {
                     $description = substr($description, strlen($customer_name) + 3);
                 }
 
-                if (substr($description, 0, strlen($invoice_number) + 3) === $invoice_number.' - ') {
+                if (substr($description, 0, strlen($invoice_number) + 3) === $invoice_number . ' - ') {
                     $description = substr($description, strlen($invoice_number) + 3);
                 }
 

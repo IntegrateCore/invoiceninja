@@ -5,13 +5,14 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Models;
 
+use App\Helpers\Cache\Atomic;
 use App\Jobs\Mail\NinjaMailerJob;
 use App\Jobs\Mail\NinjaMailerObject;
 use App\Mail\Ninja\EmailQuotaExceeded;
@@ -309,7 +310,7 @@ class Account extends BaseModel
     public function isPremium(): bool
     {
         // return true;
-        return Ninja::isHosted() && $this->isPaidHostedClient() && !$this->isTrial() && Carbon::createFromTimestamp($this->created_at)->diffInMonths() > 2;
+        return Ninja::isHosted() && $this->isPaidHostedClient() && !$this->isTrial() && (int) Carbon::createFromTimestamp($this->created_at)->diffInMonths() > 1;
     }
 
     public function isPaidHostedClient(): bool
@@ -377,7 +378,7 @@ class Account extends BaseModel
 
     public function isNewHostedAccount()
     {
-        return Ninja::isHosted() && Carbon::createFromTimestamp($this->created_at)->diffInWeeks() <= 2;
+        return Ninja::isHosted() && (int) Carbon::createFromTimestamp($this->created_at)->diffInWeeks() <= 2;
     }
 
     public function isTrial(): bool
@@ -510,14 +511,14 @@ class Account extends BaseModel
         }
 
         if ($this->email_quota) {
-            return (int)$this->email_quota;
+            return (int) $this->email_quota;
         }
 
-        if (Carbon::createFromTimestamp($this->created_at)->diffInWeeks() <= 1) {
+        if ((int) Carbon::createFromTimestamp($this->created_at)->diffInWeeks() <= 1) {
             return 20;
         }
 
-        if (Carbon::createFromTimestamp($this->created_at)->diffInWeeks() <= 2 && !$this->payment_id) {
+        if ((int) Carbon::createFromTimestamp($this->created_at)->diffInWeeks() <= 2 && !$this->payment_id) {
             return 20;
         }
 
@@ -525,7 +526,7 @@ class Account extends BaseModel
             $multiplier = $this->plan == 'enterprise' ? 2 : 1.2;
 
             $limit = $this->paid_plan_email_quota;
-            $limit += Carbon::createFromTimestamp($this->created_at)->diffInMonths() * (20 * $multiplier);
+            $limit += (int) Carbon::createFromTimestamp($this->created_at)->diffInMonths() * (20 * $multiplier);
         } else {
             $limit = $this->free_plan_email_quota;
             // $limit += Carbon::createFromTimestamp($this->created_at)->diffInMonths() * 1.5;
@@ -536,22 +537,22 @@ class Account extends BaseModel
 
     public function emailsSent()
     {
-        if (is_null(Cache::get("email_quota" . $this->key))) {
+        if (is_null(Atomic::get("email_quota" . $this->key))) {
             return 0;
         }
 
-        return Cache::get("email_quota" . $this->key);
+        return Atomic::get("email_quota" . $this->key);
     }
 
     public function emailQuotaExceeded(): bool
     {
-        if (is_null(Cache::get("email_quota" . $this->key))) {
+        if (is_null(Atomic::get("email_quota" . $this->key))) {
             return false;
         }
 
         try {
-            if (Cache::get("email_quota" . $this->key) > $this->getDailyEmailLimit()) {
-                if (is_null(Cache::get("throttle_notified:{$this->key}"))) {
+            if (Atomic::get("email_quota" . $this->key) > $this->getDailyEmailLimit()) {
+                if (Atomic::set("throttle_notified:{$this->key}", true, 60 * 60 * 24)) {
                     App::forgetInstance('translator');
                     $t = app('translator');
                     $t->replace(Ninja::transformTranslations($this->companies()->first()->settings));
@@ -561,11 +562,8 @@ class Account extends BaseModel
                     $nmo->company = $this->companies()->first();
                     $nmo->settings = $this->companies()->first()->settings;
                     $nmo->to_user = $this->companies()->first()->owner();
-                    // NinjaMailerJob::dispatch($nmo, true);
 
                     (new NinjaMailerJob($nmo, true))->handle();
-
-                    Cache::put("throttle_notified:{$this->key}", true, 60 * 60 * 24);
 
                     if (config('ninja.notification.slack')) {
                         $this->companies()->first()->notification(new EmailQuotaNotification($this))->ninja();

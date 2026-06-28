@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -72,7 +72,7 @@ class RefundPaymentRequest extends Request
             'id' => ['bail','required', new ValidRefundableRequest($input)],
             'amount' => ['numeric', 'max:99999999999999'],
             'date' => 'required',
-            'invoices.*.invoice_id' => 'required|bail',
+            'invoices.*.invoice_id' => 'required|bail|distinct',
             'invoices.*.amount' => 'required|bail|gt:0',
             'invoices' => new ValidRefundableInvoices($input),
         ];

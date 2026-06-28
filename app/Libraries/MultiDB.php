@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -23,7 +23,6 @@ use App\Models\CompanyToken;
 use App\Models\ClientContact;
 use App\Models\VendorContact;
 use App\DataProviders\SMSNumbers;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Class MultiDB.
@@ -140,7 +139,7 @@ class MultiDB
     public static function checkUserEmailExists($email): bool
     {
         if (!config('ninja.db.multi_db_enabled')) {
-            return User::where(['email' => $email])->withTrashed()->exists();
+            return User::where('email',$email)->withTrashed()->exists();
         } // true >= 1 emails found / false -> == emails found
 
         $current_db = config('database.default');
@@ -336,7 +335,7 @@ class MultiDB
                 'user.account',
                 'company',
                 'account',
-                'cu'
+                'cu',
             ])->where('token', $token)->first()) {
 
                 self::setDB($db);

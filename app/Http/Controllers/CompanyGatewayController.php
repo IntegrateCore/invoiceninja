@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -22,8 +22,8 @@ use App\Jobs\Util\ApplePayDomain;
 use Illuminate\Support\Facades\Cache;
 use App\Factory\CompanyGatewayFactory;
 use App\Filters\CompanyGatewayFilters;
-use App\Repositories\CompanyRepository;
 use Illuminate\Foundation\Bus\DispatchesJobs;
+use App\Repositories\CompanyGatewayRepository;
 use App\Transformers\CompanyGatewayTransformer;
 use App\PaymentDrivers\Stripe\Jobs\StripeWebhook;
 use App\PaymentDrivers\CheckoutCom\CheckoutSetupWebhook;
@@ -49,8 +49,6 @@ class CompanyGatewayController extends BaseController
 
     protected $entity_transformer = CompanyGatewayTransformer::class;
 
-    protected $company_repo;
-
     public $forced_includes = [];
 
     private array $stripe_keys = ['d14dd26a47cecc30fdd65700bfb67b34', 'd14dd26a37cecc30fdd65700bfb55b23'];
@@ -63,13 +61,12 @@ class CompanyGatewayController extends BaseController
 
     /**
      * CompanyGatewayController constructor.
-     * @param CompanyRepository $company_repo
+     * @param CompanyGatewayRepository $company_repo
      */
-    public function __construct(CompanyRepository $company_repo)
+    public function __construct(protected CompanyGatewayRepository $company_repo)
     {
         parent::__construct();
 
-        $this->company_repo = $company_repo;
     }
 
     /**
@@ -210,9 +207,13 @@ class CompanyGatewayController extends BaseController
         /** @var \App\Models\User $user */
         $user = auth()->user();
 
+        $company = $user->company();
+
         $company_gateway = CompanyGatewayFactory::create($user->company()->id, $user->id);
         $company_gateway->fill($request->all());
         $company_gateway->save();
+
+        $this->company_repo->addGatewayToCompanyGatewayIds($company_gateway);
 
         /*Always ensure at least one fees and limits object is set per gateway*/
         $gateway_types = $company_gateway->driver(new Client())->getAvailableMethods();
@@ -451,19 +452,23 @@ class CompanyGatewayController extends BaseController
         $company_gateway->fill($request->all());
 
         /*Always ensure at least one fees and limits object is set per gateway*/
-        $gateway_types = $company_gateway->driver(new Client())->getAvailableMethods();
+        if($driver =$company_gateway->driver(new Client())){
+            $gateway_types = $driver->getAvailableMethods();
 
-        $fees_and_limits = $company_gateway->fees_and_limits;
+            $fees_and_limits = $company_gateway->fees_and_limits;
 
-        foreach ($gateway_types as $key => $gateway_type) {
-            if (!property_exists($fees_and_limits, $key)) {
-                $fees_and_limits->{$key} = new FeesAndLimits();
+            foreach ($gateway_types as $key => $gateway_type) {
+                if (!property_exists($fees_and_limits, $key)) {
+                    $fees_and_limits->{$key} = new FeesAndLimits();
+                }
             }
+
+            $company_gateway->fees_and_limits = $fees_and_limits;
+            
         }
 
-        $company_gateway->fees_and_limits = $fees_and_limits;
         $company_gateway->save();
-
+        
         switch ($company_gateway->gateway_key) {
 
             case $this->checkout_key:
@@ -633,7 +638,7 @@ class CompanyGatewayController extends BaseController
     public function clone(CloneCompanyGatewayRequest $request, CompanyGateway $company_gateway)
     {
         $new_company_gateway = $company_gateway->replicate();
-        $new_company_gateway->label .= ' ('.ctrans('texts.clone').') ' . now()->format('Y-m-d H:i:s');
+        $new_company_gateway->label .= ' (' . ctrans('texts.clone') . ') ' . now()->format('Y-m-d H:i:s');
         $new_company_gateway->save();
         return $this->itemResponse($new_company_gateway);
     }

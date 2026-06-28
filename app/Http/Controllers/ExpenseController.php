@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -40,7 +40,6 @@ use App\Http\Requests\Expense\DestroyExpenseRequest;
 
 /**
  * Class ExpenseController.
- * @covers App\Http\Controllers\ExpenseController
  */
 class ExpenseController extends BaseController
 {
@@ -498,7 +497,7 @@ class ExpenseController extends BaseController
         /** @var \App\Models\User $user */
         $user = auth()->user();
 
-        $expenses = Expense::withTrashed()->find($request->ids);
+        $expenses = Expense::withTrashed()->company()->find($request->ids);
 
         if ($request->action == 'template' && $user->can('view', $expenses->first())) {
 
@@ -532,7 +531,7 @@ class ExpenseController extends BaseController
         }
 
         if ($request->action == 'bulk_categorize' && $user->can('edit', $expenses->first())) {
-            $this->expense_repo->categorize($expenses, $request->category_id);
+            $this->expense_repo->categorize($expenses, $request->category_id); //@phpstan-ignore-line
             $expenses = collect([]);
         }
 
@@ -542,7 +541,7 @@ class ExpenseController extends BaseController
             }
         });
 
-        return $this->listResponse(Expense::withTrashed()->whereIn('id', $request->ids));
+        return $this->listResponse(Expense::withTrashed()->company()->whereIn('id', $request->ids));
     }
 
     /**

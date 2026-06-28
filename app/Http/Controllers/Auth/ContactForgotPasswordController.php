@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -124,7 +124,9 @@ class ContactForgotPasswordController extends Controller
         if ($contact) {
             /* Update all instances of the client */
             $token = Str::random(60);
-            ClientContact::where('email', $contact->email)->update(['token' => $token]);
+            ClientContact::where('email', $contact->email)
+                ->where('company_id', $contact->company_id)
+                ->update(['token' => $token]);
             $contact->sendPasswordResetNotification($token);
             $response = Password::RESET_LINK_SENT;
         } else {

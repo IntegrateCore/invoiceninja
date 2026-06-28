@@ -66,7 +66,7 @@ class PurchaseOrderItemExport extends BaseExport
                         ->whereHas('vendor', function ($q) {
                             $q->where('is_deleted', false);
                         })
-                        ->with('vendor')->where('company_id', $this->company->id);
+                        ->with('vendor', 'location')->where('company_id', $this->company->id);
 
         if (!$this->input['include_deleted'] ?? false) {
             $query->where('is_deleted', 0);
@@ -101,7 +101,7 @@ class PurchaseOrderItemExport extends BaseExport
             return ['identifier' => $key, 'display_value' => $headerdisplay[$value]];
         })->toArray();
 
-        $query->cursor()
+        $this->streamQuery($query)
               ->each(function ($resource) {
 
                   /** @var \App\Models\PurchaseOrder $resource */
@@ -129,7 +129,7 @@ class PurchaseOrderItemExport extends BaseExport
         //insert the header
         $this->csv->insertOne($this->buildHeader());
 
-        $query->cursor()
+        $this->streamQuery($query)
             ->each(function ($purchase_order) {
 
                 /** @var \App\Models\PurchaseOrder $purchase_order */
@@ -147,7 +147,7 @@ class PurchaseOrderItemExport extends BaseExport
 
         //if we have product filters in place, we will also need to filter the items at this level:
         if (isset($this->input['product_key'])) {
-                        
+
             $products = str_getcsv($this->input['product_key'], ',', "'");
 
             $products = array_map(function ($product) {
@@ -198,7 +198,7 @@ class PurchaseOrderItemExport extends BaseExport
 
     }
 
-    private function buildRow(PurchaseOrder $purchase_order): array
+    protected function buildRow(PurchaseOrder $purchase_order): array
     {
         $transformed_purchase_order = $this->purchase_order_transformer->transform($purchase_order);
 
@@ -247,6 +247,10 @@ class PurchaseOrderItemExport extends BaseExport
 
         if (in_array('purchase_order.assigned_user_id', $this->input['report_keys'])) {
             $entity['purchase_order.assigned_user_id'] = $purchase_order->assigned_user ? $purchase_order->assigned_user->present()->name() : '';
+        }
+
+        if (in_array('purchase_order.subtotal', $this->input['report_keys'])) {
+            $entity['purchase_order.subtotal'] = $purchase_order->calc()->getSubTotal();
         }
 
         return $entity;

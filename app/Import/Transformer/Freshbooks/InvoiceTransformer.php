@@ -28,9 +28,14 @@ class InvoiceTransformer extends BaseTransformer
      */
     public function transform($line_items_data)
     {
-        $invoice_data = reset($line_items_data);
+        if (!empty($line_items_data) && is_array(reset($line_items_data))) {
+            $invoice_data = reset($line_items_data);
+        } else {
+            $invoice_data = $line_items_data;
+            $line_items_data = [$invoice_data];
+        }
 
-        if ($this->hasInvoice($invoice_data['Invoice #'])) {
+        if (isset($invoice_data['Invoice #']) && $this->hasInvoice($invoice_data['Invoice #'])) {
             throw new ImportException('Invoice number already exists');
         }
 
@@ -45,8 +50,9 @@ class InvoiceTransformer extends BaseTransformer
             'number'      => $this->getString($invoice_data, 'Invoice #'),
             'date'        => isset($invoice_data['Date Issued']) ? $this->parseDate($invoice_data['Date Issued']) : null,
             'amount'      => 0,
-            'status_id'   => $invoiceStatusMap[$status =
-                    strtolower($this->getString($invoice_data, 'Invoice Status'))] ?? Invoice::STATUS_SENT,
+            'is_amount_discount' => false,
+            'status_id'   => $invoiceStatusMap[$status
+                    = strtolower($this->getString($invoice_data, 'Invoice Status'))] ?? Invoice::STATUS_SENT,
             // 'viewed'      => $status === 'viewed',
         ];
 
@@ -71,7 +77,7 @@ class InvoiceTransformer extends BaseTransformer
         if (! empty($invoice_data['Date Paid'])) {
             $transformed['payments'] = [[
                 'date'   => $this->parseDate($invoice_data['Date Paid']),
-                'amount' => $transformed['amount'],
+                'amount' => round($transformed['amount'], 2),
             ]];
         }
 
@@ -85,11 +91,11 @@ class InvoiceTransformer extends BaseTransformer
             return ($record[$field] / $record['Line Subtotal']) * 100;
         }
 
-        $tax_amount1 = isset($record['Tax 1 Amount']) ? $record['Tax 1 Amount'] : 0;
+        $tax_amount1 = isset($record['Tax 1 Amount']) ? floatval($record['Tax 1 Amount']) : 0;
 
-        $tax_amount2 = isset($record['Tax 2 Amount']) ? $record['Tax 2 Amount'] : 0;
+        $tax_amount2 = isset($record['Tax 2 Amount']) ? floatval($record['Tax 2 Amount']) : 0;
 
-        $line_total = isset($record['Line Total']) ? $record['Line Total'] : 0;
+        $line_total = isset($record['Line Total']) ? floatval($record['Line Total']) : 0;
 
         $subtotal = $line_total - $tax_amount2 - $tax_amount1;
 
@@ -103,6 +109,6 @@ class InvoiceTransformer extends BaseTransformer
     /** @return float  */
     public function getFreshbookQuantityFloat($data, $field)
     {
-        return $data[$field];
+        return $data[$field] ?? 0;
     }
 }

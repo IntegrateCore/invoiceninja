@@ -5,16 +5,14 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Services\Invoice;
 
-use App\Events\Invoice\InvoiceWasDeleted;
 use App\Jobs\Inventory\AdjustProductInventory;
-use App\Models\Credit;
 use App\Models\Invoice;
 use App\Models\Quote;
 use App\Services\AbstractService;
@@ -30,12 +28,11 @@ class MarkInvoiceDeleted extends AbstractService
 
     private $balance_adjustment = 0;
 
-    public function __construct(public Invoice $invoice)
-    {
-    }
+    public function __construct(public Invoice $invoice) {}
 
     public function run()
     {
+        $this->refreshInvoiceForDeletion();
 
         if ($this->invoice->company->track_inventory) {
             (new AdjustProductInventory($this->invoice->company, $this->invoice, []))->handleDeletedInvoice();
@@ -54,6 +51,18 @@ class MarkInvoiceDeleted extends AbstractService
         event(new \App\Events\Invoice\InvoiceWasDeleted($this->invoice, $this->invoice->company, \App\Utils\Ninja::eventVars(auth()->user() ? auth()->user()->id : null)));
 
         return $this->invoice;
+    }
+
+    private function refreshInvoiceForDeletion(): self
+    {
+        \DB::connection(config('database.default'))->transaction(function () {
+            $this->invoice = Invoice::withTrashed()
+                                    ->where('id', $this->invoice->id)
+                                    ->lockForUpdate()
+                                    ->firstOrFail();
+        }, 2);
+
+        return $this;
     }
 
     private function adjustLedger()
@@ -138,11 +147,11 @@ class MarkInvoiceDeleted extends AbstractService
 
         $this->total_payments = $this->invoice->payments->sum('amount') - $this->invoice->payments->sum('refunded');
 
-        $this->balance_adjustment = $this->invoice->balance;
+        $this->balance_adjustment = $this->invoice->status_id == Invoice::STATUS_CANCELLED ? 0 : $this->invoice->balance;
 
-        $pre_count = count((array)$this->invoice->line_items);
+        $pre_count = count((array) $this->invoice->line_items);
 
-        $items = collect((array)$this->invoice->line_items)
+        $items = collect((array) $this->invoice->line_items)
                     ->filter(function ($item) {
                         return $item->type_id != '3';
                     })->toArray();
@@ -185,9 +194,9 @@ class MarkInvoiceDeleted extends AbstractService
     private function calcNumber($x)
     {
         if ($x == 0) {
-            $number = $this->invoice->number.'_'.ctrans('texts.deleted');
+            $number = $this->invoice->number . '_' . ctrans('texts.deleted');
         } else {
-            $number = $this->invoice->number.'_'.ctrans('texts.deleted').'_'.$x;
+            $number = $this->invoice->number . '_' . ctrans('texts.deleted') . '_' . $x;
         }
 
         return $number;

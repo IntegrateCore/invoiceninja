@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -500,7 +500,7 @@ class VendorController extends BaseController
         $action = request()->input('action');
 
         $ids = request()->input('ids');
-        $vendors = Vendor::withTrashed()->find($this->transformKeys($ids));
+        $vendors = Vendor::withTrashed()->company()->find($this->transformKeys($ids));
 
         /** @var \App\Models\User $user */
         $user = auth()->user();
@@ -511,7 +511,7 @@ class VendorController extends BaseController
             }
         });
 
-        return $this->listResponse(Vendor::withTrashed()->whereIn('id', $this->transformKeys($ids)));
+        return $this->listResponse(Vendor::withTrashed()->company()->whereIn('id', $this->transformKeys($ids)));
     }
 
     /**

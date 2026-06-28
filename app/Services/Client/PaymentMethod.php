@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -29,9 +29,9 @@ class PaymentMethod
 
     private $payment_urls = [];
 
-    public function __construct(private Client $client, private float $amount)
-    {
-    }
+    private $gateway_order = [];
+
+    public function __construct(private Client $client, private float $amount) {}
 
     public function run()
     {
@@ -51,7 +51,14 @@ class PaymentMethod
             return $methods->reject(function ($item) {
                 return $item['gateway_type_id'] == '29'; //PayPal advanced credit cards, needs to be excluded here
             });
-        })->toArray();
+        })
+        ->sortBy('sort_order')
+        ->map(function ($item) {
+            unset($item['sort_order']); // Remove the temporary sort field before returning
+            return $item;
+        })
+        ->values() // Reset array keys
+        ->toArray();
 
         return $this->payment_urls;
 
@@ -74,6 +81,9 @@ class PaymentMethod
             if ($company_gateways == '0') {
                 $transformed_ids = [];
             }
+
+            // Store the gateway order: gateway_id => priority
+            $this->gateway_order = array_flip($transformed_ids);
 
             $this->gateways = $this->client
                              ->company
@@ -189,7 +199,7 @@ class PaymentMethod
             // Show credits as only payment option if both statements are true.
             if (
                 $this->client->service()->getCreditBalance() > $this->amount
-                && $this->client->getSetting('use_credits_payment') == 'always') {
+               && $this->client->getSetting('use_credits_payment') == 'always') {
                 $payment_urls = [];
             }
 
@@ -198,6 +208,7 @@ class PaymentMethod
                 'company_gateway_id'  => CompanyGateway::GATEWAY_CREDIT,
                 'gateway_type_id' => GatewayType::CREDIT,
                 'is_paypal' => false,
+                'sort_order' => 9999, // Credits always appear last
             ];
         }
 
@@ -211,19 +222,24 @@ class PaymentMethod
 
         $fee_label = $gateway->calcGatewayFeeLabel($this->amount, $this->client, $type);
 
+        // Get the priority from gateway_order, default to 999 for unordered gateways
+        $priority = $this->gateway_order[$gateway->id] ?? 999;
+
         if (! $type || (GatewayType::CUSTOM == $type)) {
             $this->payment_urls[] = [
-                'label' => $gateway->getConfigField('name').$fee_label,
+                'label' => $gateway->getConfigField('name') . $fee_label,
                 'company_gateway_id'  => $gateway->id,
                 'gateway_type_id' => GatewayType::CREDIT_CARD,
                 'is_paypal' => $gateway->isPayPal(),
+                'sort_order' => $priority,
             ];
         } else {
             $this->payment_urls[] = [
-                'label' => $gateway->getTypeAlias($type).$fee_label,
+                'label' => $gateway->getTypeAlias($type) . $fee_label,
                 'company_gateway_id'  => $gateway->id,
                 'gateway_type_id' => $type,
                 'is_paypal' => $gateway->isPayPal(),
+                'sort_order' => $priority,
             ];
         }
 

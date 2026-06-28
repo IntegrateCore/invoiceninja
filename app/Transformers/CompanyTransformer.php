@@ -5,17 +5,15 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Transformers;
 
-use stdClass;
 use App\Models\Task;
 use App\Models\User;
-use App\Utils\Ninja;
 use App\Models\Quote;
 use App\Models\Client;
 use App\Models\Credit;
@@ -120,7 +118,7 @@ class CompanyTransformer extends EntityTransformer
      */
     public function transform(Company $company)
     {
-        $std = new stdClass();
+        $std = new \stdClass();
 
         return [
             'id' => (string) $this->encodePrimaryKey($company->id),
@@ -223,10 +221,30 @@ class CompanyTransformer extends EntityTransformer
             'smtp_local_domain' => (string) $company->smtp_local_domain ?? '',
             'smtp_verify_peer' => (bool) $company->smtp_verify_peer,
             'e_invoice' => $company->e_invoice ?: new \stdClass(),
-            'has_quickbooks_token' => $company->quickbooks ? true : false,
-            'is_quickbooks_token_active' => $company->quickbooks?->accessTokenKey ?? false,
-            'legal_entity_id' => $company->legal_entity_id ?? null,
+            'legal_entity_id' =>  $company->legal_entity_id ? (int) $company->legal_entity_id : null,
+            'quickbooks' => $this->transformQuickbooks($company),
+            'enable_modules' => (bool) $company->enable_modules,
         ];
+
+    }
+
+    /**
+     * Transforms the QuickBooks settings for API output, stripping the OAuth
+     * access/refresh tokens which must never leave the server.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function transformQuickbooks(Company $company): ?array
+    {
+        if (!$company->getRawOriginal('quickbooks')) {
+            return null;
+        }
+
+        $quickbooks = $company->quickbooks->toArray();
+
+        unset($quickbooks['accessTokenKey'], $quickbooks['refresh_token']);
+
+        return $quickbooks;
     }
 
     private function isLarge(Company $company): bool

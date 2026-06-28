@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -17,9 +17,9 @@ use App\Utils\Traits\MakesHash;
 use Illuminate\Validation\Rule;
 use App\Utils\Traits\CleanLineItems;
 use App\Utils\Traits\ChecksEntityStatus;
-use App\Http\ValidationRules\Invoice\LockedInvoiceRule;
 use App\Http\ValidationRules\EInvoice\ValidInvoiceScheme;
 use App\Http\ValidationRules\Project\ValidProjectForClient;
+use App\Utils\BcMath;
 
 class UpdateInvoiceRequest extends Request
 {
@@ -49,11 +49,13 @@ class UpdateInvoiceRequest extends Request
 
         $rules['file'] = 'bail|sometimes|array';
         $rules['file.*'] = $this->fileValidation();
+        $rules['documents'] = 'bail|sometimes|array';
+        $rules['documents.*'] = $this->fileValidation();
 
         $rules['number'] = ['bail', 'sometimes', 'nullable', Rule::unique('invoices')->where('company_id', $user->company()->id)->ignore($this->invoice->id)];
 
         $rules['is_amount_discount'] = ['boolean'];
-        $rules['client_id'] = ['bail', 'sometimes', Rule::in([$this->invoice->client_id])];
+        $rules['client_id'] = ['bail', 'sometimes', 'integer', Rule::in([$this->invoice->client_id])];
         $rules['line_items'] = 'array';
 
         $rules['invitations'] = 'sometimes|bail|array';
@@ -67,16 +69,7 @@ class UpdateInvoiceRequest extends Request
         $rules['tax_name1'] = 'bail|sometimes|string|nullable';
         $rules['tax_name2'] = 'bail|sometimes|string|nullable';
         $rules['tax_name3'] = 'bail|sometimes|string|nullable';
-        $rules['status_id'] = [
-            'bail',
-            'sometimes',
-            'not_in:5',
-            function ($attribute, $value, $fail) {
-                if (in_array($this->invoice->status_id, [5, 6])) {
-                    $fail(ctrans('texts.locked_invoice'));
-                }
-            }
-        ];
+        $rules['status_id'] = ['bail','sometimes','not_in:5,6'];
         $rules['exchange_rate'] = 'bail|sometimes|numeric';
         $rules['partial'] = 'bail|sometimes|nullable|numeric';
         $rules['amount'] = ['sometimes', 'bail', 'numeric', 'max:99999999999999'];
@@ -89,11 +82,23 @@ class UpdateInvoiceRequest extends Request
         $rules['date'] = 'bail|sometimes|date:Y-m-d';
 
         $rules['partial_due_date'] = ['bail', 'sometimes', 'nullable', 'exclude_if:partial,0', 'date', 'before:due_date', 'after_or_equal:date'];
-        $rules['due_date'] = ['bail', 'sometimes', 'nullable', 'after:partial_due_date', 'after_or_equal:date', Rule::requiredIf(fn () => strlen($this->partial_due_date ?? '') > 1), 'date'];
+        $rules['due_date'] = ['bail', 'sometimes', 'nullable', 'after:partial_due_date', 'after_or_equal:date', Rule::requiredIf(fn() => strlen($this->partial_due_date ?? '') > 1), 'date'];
 
         $rules['e_invoice'] = ['sometimes', 'nullable', new ValidInvoiceScheme()];
 
         $rules['location_id'] = ['nullable', 'sometimes','bail', Rule::exists('locations', 'id')->where('company_id', $user->company()->id)->where('client_id', $this->invoice->client_id)];
+
+        $rules['paid_to_date'] = [
+            'bail',
+            'sometimes',
+            'nullable',
+            function ($attribute, $value, $fail) {
+
+                if (BcMath::comp($this->invoice->fresh()->paid_to_date, $value) !== 0) {
+                    $fail(ctrans('texts.invoice_status_changed'));
+                }
+            },
+        ];
 
         return $rules;
     }
@@ -102,9 +107,10 @@ class UpdateInvoiceRequest extends Request
     {
         $validator->after(function ($validator) {
 
-            if(request()->input('paid') == 'true'){
-            }
-            elseif($this->invoice->company->verifactuEnabled() && $this->invoice->status_id !== \App\Models\Invoice::STATUS_DRAFT){
+            if (request()->input('paid') == 'true') {
+            } elseif ($this->invoice->company->verifactuEnabled() && $this->invoice->status_id !== \App\Models\Invoice::STATUS_DRAFT) {
+                $validator->errors()->add('status_id', ctrans('texts.locked_invoice'));
+            } elseif(in_array($this->invoice->status_id, [\App\Models\Invoice::STATUS_CANCELLED, \App\Models\Invoice::STATUS_REVERSED])) {
                 $validator->errors()->add('status_id', ctrans('texts.locked_invoice'));
             }
 
@@ -115,9 +121,9 @@ class UpdateInvoiceRequest extends Request
 
     public function prepareForValidation()
     {
-        
+
         if (request()->has('paid')) {
-            usleep(rand(100000, 150000)); 
+            usleep(rand(100000, 150000));
         }
 
         $input = $this->all();
@@ -149,8 +155,8 @@ class UpdateInvoiceRequest extends Request
 
         //handles edge case where we need for force set the due date of the invoice.
         if ((isset($input['partial_due_date']) && strlen($input['partial_due_date']) > 1) && (!array_key_exists('due_date', $input) || (empty($input['due_date']) && empty($this->invoice->due_date)))) {
-            $client = \App\Models\Client::withTrashed()->find($input['client_id']);
-            $input['due_date'] = \Illuminate\Support\Carbon::parse($input['date'])->addDays((int)$client->getSetting('payment_terms'))->format('Y-m-d');
+            $client = \App\Models\Client::withTrashed()->find($this->invoice->client_id);
+            $input['due_date'] = \Illuminate\Support\Carbon::parse($input['date'] ?? $this->invoice->date)->addDays((int) $client->getSetting('payment_terms'))->format('Y-m-d');
         }
 
         if (isset($input['e_invoice']) && is_array($input['e_invoice'])) {

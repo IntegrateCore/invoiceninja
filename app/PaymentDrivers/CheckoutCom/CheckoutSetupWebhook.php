@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -44,12 +44,12 @@ class CheckoutSetupWebhook implements ShouldQueue
 
     public CheckoutComPaymentDriver $checkout;
 
-    public function __construct(private string $company_key, private int $company_gateway_id)
-    {
-    }
+    public function __construct(private string $company_key, private int $company_gateway_id) {}
 
     public function handle()
     {
+
+        nlog("Checkout Setup Webhook");
 
         MultiDB::findAndSetDbByCompanyKey($this->company_key);
 
@@ -57,6 +57,13 @@ class CheckoutSetupWebhook implements ShouldQueue
         $company_gateway = CompanyGateway::find($this->company_gateway_id);
 
         $this->checkout = $company_gateway->driver()->init();
+
+        if ($this->checkout->gateway === null) {
+            return;
+        }
+
+        // Probe which payment methods the account supports and store the result
+        $this->checkout->probeAvailablePaymentMethods();
 
         $webhook = new Webhook($this->checkout);
 
@@ -92,7 +99,7 @@ class CheckoutSetupWebhook implements ShouldQueue
 
         $eventWorkflowConditionRequest = new EventWorkflowConditionRequest();
         $eventWorkflowConditionRequest->events = [
-            "gateway" => ["payment_approved"],
+            "gateway" => ["payment_approved", "payment_declined", "payment_expired", "payment_canceled"],
             "issuing" => ["authorization_approved","authorization_declined"],
         ];
 

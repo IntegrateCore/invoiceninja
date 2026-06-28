@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -21,6 +21,7 @@ use App\Models\Traits\Excludable;
 use App\DataMapper\ClientSettings;
 use App\DataMapper\CompanySettings;
 use Illuminate\Support\Facades\App;
+use Illuminate\Mail\Mailables\Address;
 use App\Services\Client\ClientService;
 use App\Utils\Traits\GeneratesCounter;
 use Laracasts\Presenter\PresentableTrait;
@@ -118,7 +119,7 @@ use Illuminate\Contracts\Translation\HasLocalePreference;
  * @method static \Illuminate\Database\Eloquent\Builder|Client without()
  * @method static \Illuminate\Database\Eloquent\Builder|Client find()
  * @method static \Illuminate\Database\Eloquent\Builder|Client select()
- * @property string $payment_balance
+ * @property float|null $payment_balance
  * @property mixed $tax_data
  * @property bool $is_tax_exempt
  * @property bool $has_valid_vat_number
@@ -255,7 +256,7 @@ class Client extends BaseModel implements HasLocalePreference
         'custom_value4',
     ];
 
-    public function toSearchableArray()
+    public function toSearchableArray(): array
     {
 
         $locale = $this->locale();
@@ -264,15 +265,17 @@ class Client extends BaseModel implements HasLocalePreference
         $name = ctrans('texts.client') . " | " . $this->present()->name();
 
         if (strlen($this->vat_number ?? '') > 1) {
-            $name .= " | ". $this->vat_number;
+            $name .= " | " . $this->vat_number;
         }
 
         return [
-            'id' => $this->company->db.":".$this->id,
+            'id' => $this->company->db . ":" . $this->id,
             'name' => $name,
-            'is_deleted' => (bool)$this->is_deleted,
+            'is_deleted' => (bool) $this->is_deleted,
             'hashed_id' => $this->hashed_id,
-            'number' => (string)$this->number,
+            'user_id' => (string) $this->user_id,
+            'assigned_user_id' => (string) $this->assigned_user_id,
+            'number' => (string) $this->number,
             'id_number' => $this->id_number,
             'vat_number' => $this->vat_number,
             'balance' => $this->balance,
@@ -301,7 +304,7 @@ class Client extends BaseModel implements HasLocalePreference
 
     public function getScoutKey()
     {
-        return $this->company ? $this->company->db.":".$this->id : config('database.default').":".$this->id; //28-04-2025 handle removing clients when purged
+        return $this->company ? $this->company->db . ":" . $this->id : config('database.default') . ":" . $this->id; //28-04-2025 handle removing clients when purged
     }
 
     public function getEntityType()
@@ -376,6 +379,25 @@ class Client extends BaseModel implements HasLocalePreference
     public function contacts(): HasMany
     {
         return $this->hasMany(ClientContact::class)->orderBy('is_primary', 'desc');
+    }
+
+    /**
+     * Returns CC-only contacts as an array of Address objects.
+     * Capped at 4 to stay within provider limits.
+     *
+     * @return array<int, Address>
+     */
+    public function cc_contacts(): array
+    {
+        return $this->contacts()
+            ->where('cc_only', true)
+            ->whereNotNull('email')
+            ->where('email', '!=', '')
+            ->where('is_locked', false)
+            ->limit(4)
+            ->get()
+            ->map(fn($c) => new Address($c->email, $c->present()->name())) // @phpstan-ignore-line
+            ->toArray();
     }
 
     public function primary_contact(): HasMany
@@ -502,7 +524,7 @@ class Client extends BaseModel implements HasLocalePreference
     {
 
         return once(function () {
-            
+
             /** @var \Illuminate\Support\Collection<Currency> */
             $currencies = app('currencies');
 
@@ -630,7 +652,8 @@ class Client extends BaseModel implements HasLocalePreference
 
                 $cg = CompanyGateway::query()->find($pm['company_gateway_id']);
 
-                if ($cg->gateway_key == '80af24a6a691230bbec33e930ab40666') { //ensure we don't attempt to authorize paypal platform - yet.
+                //skip PayPal + Custom Gateways from authorization attempts
+                if (in_array($cg->gateway_key, ['80af24a6a691230bbec33e930ab40666','54faab2ab6e3223dbe848b1686490baa'])) { //ensure we don't attempt to authorize paypal platform - yet.
                     continue;
                 }
 
@@ -748,7 +771,7 @@ class Client extends BaseModel implements HasLocalePreference
         }
 
         // if (in_array($this->currency()->code, ['USD']) && in_array(GatewayType::ACSS, array_column($pms, 'gateway_type_id'))) {
-            if (in_array($this->currency()->code, ['CAD','USD']) && in_array(GatewayType::ACSS, array_column($pms, 'gateway_type_id'))) {
+        if (in_array($this->currency()->code, ['CAD','USD']) && in_array(GatewayType::ACSS, array_column($pms, 'gateway_type_id'))) {
             // if ($this->currency()->code == 'CAD' && in_array(GatewayType::ACSS, array_column($pms, 'gateway_type_id'))) {
             foreach ($pms as $pm) {
                 if ($pm['gateway_type_id'] == GatewayType::ACSS) {
@@ -899,48 +922,48 @@ class Client extends BaseModel implements HasLocalePreference
 
     public function backup_path(): string
     {
-        return $this->company->company_key.'/'.$this->client_hash.'/backups';
+        return $this->company->company_key . '/' . $this->client_hash . '/backups';
     }
 
     public function invoice_filepath($invitation): string
     {
         $contact_key = $invitation->contact->contact_key;
 
-        return $this->company->company_key.'/'.$this->client_hash.'/'.$contact_key.'/invoices/';
+        return $this->company->company_key . '/' . $this->client_hash . '/' . $contact_key . '/invoices/';
     }
     public function e_document_filepath($invitation): string
     {
         $contact_key = $invitation->contact->contact_key;
 
-        return $this->company->company_key.'/'.$this->client_hash.'/'.$contact_key.'/e_invoice/';
+        return $this->company->company_key . '/' . $this->client_hash . '/' . $contact_key . '/e_invoice/';
     }
 
     public function quote_filepath($invitation): string
     {
         $contact_key = $invitation->contact->contact_key;
 
-        return $this->company->company_key.'/'.$this->client_hash.'/'.$contact_key.'/quotes/';
+        return $this->company->company_key . '/' . $this->client_hash . '/' . $contact_key . '/quotes/';
     }
 
     public function credit_filepath($invitation): string
     {
         $contact_key = $invitation->contact->contact_key;
 
-        return $this->company->company_key.'/'.$this->client_hash.'/'.$contact_key.'/credits/';
+        return $this->company->company_key . '/' . $this->client_hash . '/' . $contact_key . '/credits/';
     }
 
     public function recurring_invoice_filepath($invitation): string
     {
         $contact_key = $invitation->contact->contact_key;
 
-        return $this->company->company_key.'/'.$this->client_hash.'/'.$contact_key.'/recurring_invoices/';
+        return $this->company->company_key . '/' . $this->client_hash . '/' . $contact_key . '/recurring_invoices/';
     }
 
     public function company_filepath(): string
     {
-        return $this->company->company_key.'/';
+        return $this->company->company_key . '/';
     }
-    
+
     /**
      * document_filepath
      * @deprecated. not used.
@@ -948,7 +971,7 @@ class Client extends BaseModel implements HasLocalePreference
      */
     public function document_filepath(): string
     {
-        return $this->company->company_key.'/documents/';
+        return $this->company->company_key . '/documents/';
     }
 
     public function setCompanyDefaults($data, $entity_name): array
@@ -959,13 +982,13 @@ class Client extends BaseModel implements HasLocalePreference
         $footer = &$data['footer'];
 
         if (empty($terms)) {
-            $defaults['terms'] = $this->getSetting($entity_name.'_terms');
+            $defaults['terms'] = $this->getSetting($entity_name . '_terms');
         } elseif ($terms) {
             $defaults['terms'] = $data['terms'];
         }
 
         if (empty($footer)) {
-            $defaults['footer'] = $this->getSetting($entity_name.'_footer');
+            $defaults['footer'] = $this->getSetting($entity_name . '_footer');
         } elseif ($footer) {
             $defaults['footer'] = $data['footer'];
         }
@@ -1015,13 +1038,18 @@ class Client extends BaseModel implements HasLocalePreference
             $offset -= 10;
         }
 
-        $offset -= $this->company->utc_offset();
+        $timezone = $this->timezone();
+
+        date_default_timezone_set('GMT');
+        $date = new \DateTime("now", new \DateTimeZone($timezone->name ?? 'UTC'));
+        $offset -= $date->getOffset();
 
         $offset += ($entity_send_time * 3600);
 
         return $offset;
+
     }
-    
+
     public function translate_entity(): string
     {
         return ctrans('texts.client');
@@ -1029,7 +1057,7 @@ class Client extends BaseModel implements HasLocalePreference
 
     public function portalUrl(bool $use_react_url): string
     {
-        return $use_react_url ? config('ninja.react_url'). "/#/clients/{$this->hashed_id}" : config('ninja.app_url');
+        return $use_react_url ? config('ninja.react_url') . "/#/clients/{$this->hashed_id}" : config('ninja.app_url');
     }
 
     /**
@@ -1042,6 +1070,18 @@ class Client extends BaseModel implements HasLocalePreference
     public function peppolSendingEnabled(): bool
     {
         return $this->getSetting('e_invoice_type') == 'PEPPOL' && $this->company->peppolSendingEnabled() && is_null($this->checkDeliveryNetwork());
+    }
+    
+    /**
+     * reportableFrTransaction
+     *
+     * Coarse gate for routing entities into the France reporting domain.
+     *
+     * @return bool
+     */
+    public function reportableFrTransaction(): bool
+    {
+        return (bool) $this->getSetting('france_reporting_enabled');
     }
 
     /**
@@ -1059,19 +1099,42 @@ class Client extends BaseModel implements HasLocalePreference
             return "Client has no country set!";
         }
 
-        $br = new \App\DataMapper\Tax\BaseRule();
+        $country_code = $this->country->iso_3166_2;
 
-        $government_countries = array_merge($br->peppol_business_countries, $br->peppol_government_countries);
+        $router = new \App\Services\EDocument\Gateway\Storecove\StorecoveRouter();
 
-        if (in_array($this->country->iso_3166_2, $government_countries) && $this->classification == 'government') {
-            return null;
+        // Gate on the actual delivery-capable list, not routing_rules.
+        // routing_rules carries tax metadata for many more countries (HR, CZ,
+        // HU, SK, ...) that are not actual Peppol destinations. IT is
+        // deliverable via SDI rather than Peppol proper.
+        $deliverable = config('einvoice.peppol_network');
+
+        if (!in_array($country_code, $deliverable, true)) {
+            return "Country {$this->country->full_name} ( {$country_code} ) is not supported for e-delivery.";
         }
 
-        if (in_array($this->country->iso_3166_2, $br->peppol_business_countries)) {
-            return null;
+        if (!$router->hasRoutingRules($country_code)) {
+            return "Country {$this->country->full_name} ( {$country_code} ) is not supported for e-delivery.";
         }
 
-        return "Country {$this->country->full_name} ( {$this->country->iso_3166_2} ) is not supported by the PEPPOL network for e-delivery.";
+        if (!$router->isClassificationRoutable($country_code, $this->classification ?? 'business')) {
+            return ucfirst($this->classification) . " clients in {$this->country->full_name} ( {$country_code} ) are not routable on the Peppol network.";
+        }
 
+        return null;
+
+    }
+
+    public function requiresDocuNinjaSigning(): bool
+    {
+        return $this->getSetting('require_invoice_signature')
+            && $this->company->docuninjaActive();
+    }
+
+    public function requiresSignature(): bool
+    {
+        return $this->getSetting('require_invoice_signature')
+            && $this->company->account->hasFeature(Account::FEATURE_INVOICE_SETTINGS)
+            && !$this->company->docuninjaActive();
     }
 }

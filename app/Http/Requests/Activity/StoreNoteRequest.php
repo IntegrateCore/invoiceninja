@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -18,6 +18,8 @@ use Illuminate\Validation\Rule;
 
 class StoreNoteRequest extends Request
 {
+    public $error_message;
+
     /**
      * Determine if the user is authorized to make this request.
      *
@@ -73,7 +75,7 @@ class StoreNoteRequest extends Request
             return false;
         }
 
-        $class = "\\App\\Models\\".ucfirst(Str::camel(rtrim($this->entity, 's')));
+        $class = "\\App\\Models\\" . ucfirst(Str::camel(rtrim($this->entity, 's')));
         return $class::withTrashed()->find(is_string($this->entity_id) ? $this->decodePrimaryKey($this->entity_id) : $this->entity_id);
 
     }

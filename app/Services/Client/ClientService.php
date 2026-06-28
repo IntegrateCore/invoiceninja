@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -39,9 +39,7 @@ class ClientService
 
     private bool $completed = true;
 
-    public function __construct(private Client $client)
-    {
-    }
+    public function __construct(private Client $client) {}
 
     public function calculateBalance(?Invoice $invoice = null)
     {
@@ -178,7 +176,7 @@ class ClientService
         $credits = Credit::withTrashed()->where('client_id', $this->client->id)
                       ->where('is_deleted', false)
                       ->where(function ($query) {
-                          $query->whereDate('due_date', '<=', now()->format('Y-m-d'))
+                          $query->where('due_date', '>=', now()->format('Y-m-d'))
                                   ->orWhereNull('due_date');
                       })
                       ->orderBy('created_at', 'ASC');
@@ -192,7 +190,7 @@ class ClientService
                   ->where('is_deleted', false)
                   ->where('balance', '>', 0)
                   ->where(function ($query) {
-                      $query->whereDate('due_date', '<=', now()->format('Y-m-d'))
+                      $query->where('due_date', '>=', now()->format('Y-m-d'))
                               ->orWhereNull('due_date');
                   })
                   ->orderBy('created_at', 'ASC')->get();

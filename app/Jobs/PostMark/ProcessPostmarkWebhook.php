@@ -5,33 +5,34 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Jobs\PostMark;
 
-use App\Models\Company;
-use App\Models\SystemLog;
-use App\Libraries\MultiDB;
-use Postmark\PostmarkClient;
-use Illuminate\Bus\Queueable;
+use App\DataMapper\Analytics\Mail\EmailBounce;
+use App\DataMapper\Analytics\Mail\EmailSpam;
 use App\Jobs\Util\SystemLogger;
-use App\Models\QuoteInvitation;
+use App\Libraries\MultiDB;
+use App\Models\Company;
 use App\Models\CreditInvitation;
 use App\Models\InvoiceInvitation;
-use Illuminate\Queue\SerializesModels;
-use Turbo124\Beacon\Facades\LightLogs;
 use App\Models\PurchaseOrderInvitation;
-use Illuminate\Queue\InteractsWithQueue;
+use App\Models\QuoteInvitation;
 use App\Models\RecurringInvoiceInvitation;
+use App\Models\SystemLog;
+use App\Notifications\Ninja\EmailBounceNotification;
+use App\Notifications\Ninja\EmailSpamNotification;
+use App\Utils\Ninja;
+use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
-use App\DataMapper\Analytics\Mail\EmailSpam;
-use App\DataMapper\Analytics\Mail\EmailBounce;
-use App\Notifications\Ninja\EmailSpamNotification;
-use App\Notifications\Ninja\EmailBounceNotification;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Postmark\PostmarkClient;
+use Turbo124\Beacon\Facades\LightLogs;
 
 class ProcessPostmarkWebhook implements ShouldQueue
 {
@@ -62,6 +63,9 @@ class ProcessPostmarkWebhook implements ShouldQueue
      */
     public function __construct(private array $request, private string $security_token)
     {
+        if (Ninja::isHosted()) {
+            $this->onQueue('postmark');
+        }
     }
 
     private function getSystemLog(string $message_id): ?SystemLog
@@ -99,7 +103,8 @@ class ProcessPostmarkWebhook implements ShouldQueue
             $this->company->notification(new EmailSpamNotification($this->company))->ninja();
         }
 
-        if (!$this->invitation) {
+        /** Free accounts do not have email delivery meta data stored. */
+        if (!$this->invitation || (Ninja::isHosted() && $this->company->account->isFreeHostedClient())) {
             return;
         }
 
@@ -362,7 +367,7 @@ class ProcessPostmarkWebhook implements ShouldQueue
 
         try {
             $messageDetail = $postmark->getOutboundMessageDetails($message_id);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
 
             $postmark_secret = config('services.postmark-outlook.token');
             $postmark = new PostmarkClient($postmark_secret);
@@ -379,7 +384,6 @@ class ProcessPostmarkWebhook implements ShouldQueue
     {
 
         $messageDetail = $this->getRawMessage($message_id);
-
 
         $event = collect($messageDetail->messageevents)->first(function ($event) {
 
@@ -423,7 +427,7 @@ class ProcessPostmarkWebhook implements ShouldQueue
                     'delivery_message' => $event->Details->DeliveryMessage ?? $event->Details->Summary ?? '',
                     'server' => $event->Details->DestinationServer ?? '',
                     'server_ip' => $event->Details->DestinationIP ?? '',
-                    'date' => \Carbon\Carbon::parse($event->ReceivedAt)->format('Y-m-d H:i:s') ?? '',
+                    'date' => \Carbon\Carbon::parse($event->ReceivedAt)->setTimezone($this->invitation->company->timezone()->name)->format('Y-m-d H:i:s') ?? '',
                 ];
 
             })->toArray();
@@ -443,17 +447,11 @@ class ProcessPostmarkWebhook implements ShouldQueue
         }
     }
 
-    // public function middleware()
-    // {
-    //     $key = $this->request['MessageID'] ?? '' . $this->request['Tag'] ?? '';
-    //     return [(new \Illuminate\Queue\Middleware\WithoutOverlapping($key))->releaseAfter(60)];
-    // }
-
     public function failed($exception = null)
     {
 
         if ($exception) {
-            nlog("PROCESSPOSTMARKWEBHOOK:: ". $exception->getMessage());
+            nlog("PROCESSPOSTMARKWEBHOOK:: " . $exception->getMessage());
         }
 
         config(['queue.failed.driver' => null]);

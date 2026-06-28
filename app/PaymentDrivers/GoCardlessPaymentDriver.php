@@ -5,30 +5,30 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\PaymentDrivers;
 
+use App\Factory\ClientContactFactory;
+use App\Factory\ClientFactory;
+use App\Http\Requests\Payments\PaymentWebhookRequest;
+use App\Jobs\Mail\PaymentFailedMailer;
+use App\Jobs\Util\SystemLogger;
 use App\Models\Client;
+use App\Models\ClientGatewayToken;
 use App\Models\Country;
-use App\Models\Invoice;
-use App\Models\Payment;
-use App\Models\SystemLog;
 use App\Models\GatewayType;
+use App\Models\Payment;
 use App\Models\PaymentHash;
 use App\Models\PaymentType;
-use App\Factory\ClientFactory;
-use App\Jobs\Util\SystemLogger;
-use App\Utils\Traits\MakesHash;
-use App\Models\ClientGatewayToken;
-use App\Factory\ClientContactFactory;
-use App\Jobs\Mail\PaymentFailedMailer;
+use App\Models\SystemLog;
+use App\PaymentDrivers\GoCardless\Jobs\GoCardlessWebhook;
 use App\Utils\Traits\GeneratesCounter;
+use App\Utils\Traits\MakesHash;
 use Illuminate\Database\QueryException;
-use App\Http\Requests\Payments\PaymentWebhookRequest;
 
 class GoCardlessPaymentDriver extends BaseDriver
 {
@@ -71,16 +71,16 @@ class GoCardlessPaymentDriver extends BaseDriver
 
         if (
             $this->client
-            && isset($this->client->country)
-            && in_array($this->client->country->iso_3166_3, ['USA'])
+           && isset($this->client->country)
+           && in_array($this->client->country->iso_3166_3, ['USA'])
         ) {
             $types[] = GatewayType::BANK_TRANSFER;
         }
 
         if (
             $this->client
-            && isset($this->client->country)
-            && in_array($this->client->currency()->code, ['EUR', 'GBP','DKK','SEK','AUD','NZD','CAD'])
+           && isset($this->client->country)
+           && in_array($this->client->currency()->code, ['EUR', 'GBP','DKK','SEK','AUD','NZD','CAD'])
         ) {
             $types[] = GatewayType::DIRECT_DEBIT;
         }
@@ -263,121 +263,92 @@ class GoCardlessPaymentDriver extends BaseDriver
         $this->init();
 
         nlog('GoCardless Event');
-        nlog($request->all());
+
+        $webhook_secret = $this->company_gateway->getConfigField('webhookSecret');
+
+        if ($webhook_secret) {
+            $sig_header = $request->header('Webhook-Signature');
+
+            if (! $sig_header) {
+                return response()->json(['error' => 'No signature header'], 403);
+            }
+
+            try {
+                \GoCardlessPro\Webhook::parse(
+                    $request->getContent(),
+                    $sig_header,
+                    $webhook_secret
+                );
+            } catch (\GoCardlessPro\Core\Exception\InvalidSignatureException $e) {
+                nlog('GoCardless webhook signature verification failed: ' . $e->getMessage());
+
+                return response()->json(['error' => 'Invalid signature'], 403);
+            }
+        }
+
         if (! $request->has('events')) {
             nlog('No GoCardless events to process in response?');
 
             return response()->json([], 200);
         }
 
-        sleep(1);
+        GoCardlessWebhook::dispatch($request->events, $request->company_key, $this->decodePrimaryKey($request->company_gateway_id))->delay(2);
 
-        foreach ($request->events as $event) {
-            if (
-                ($event['resource_type'] == 'payments' && $event['action'] == 'confirmed') ||
-                $event['action'] === 'paid_out') {
-                nlog('Searching for transaction reference');
+        //billing_request fulfilled
+        //
 
-                $payment = Payment::query()
-                    ->where('transaction_reference', $event['links']['payment'])
-                    ->where('company_id', $request->getCompany()->id)
-                    ->first();
+        //i need to build more context here, i need the client , the payment hash resolved and update the class properties.
+        //after i resolve the payment hash, ensure the invoice has not been marked as paid and the payment does not already exist.
+        //if it does exist, ensure it is completed and not pending.
 
-                if ($payment) {
-                    $payment->status_id = Payment::STATUS_COMPLETED;
-                    $payment->save();
-                    nlog('GoCardless completed');
-                } else {
-                    nlog('I was unable to find the payment for this reference');
-                }
-                //finalize payments on invoices here.
-            }
+        // if ($event['action'] == 'fulfilled' && array_key_exists('billing_request', $event['links'])) {
+        //     $hash = PaymentHash::whereJsonContains('data->billing_request', $event['links']['billing_request'])->first();
 
-            if ($event['action'] === 'failed' && array_key_exists('payment', $event['links'])) {
-                $payment = Payment::query()
-                    ->where('transaction_reference', $event['links']['payment'])
-                    ->where('company_id', $request->getCompany()->id)
-                    ->first();
+        //     if (!$hash) {
+        //         nlog("GoCardless: couldn't find a hash, need to abort => Billing Request => " . $event['links']['billing_request']);
+        //         return response()->json([], 200);
+        //     }
 
-                if ($payment) {
-                    if ($payment->status_id == Payment::STATUS_PENDING) {
-                        $payment->service()->deletePayment();
-                    }
+        //     $this->setPaymentHash($hash);
 
-                    $payment->status_id = Payment::STATUS_FAILED;
-                    $payment->save();
+        //     $billing_request = $this->gateway->billingRequests()->get(
+        //         $event['links']['billing_request']
+        //     );
 
-                    $payment_hash = PaymentHash::where('payment_id', $payment->id)->first();
-                    $error = '';
+        //     $payment = $this->gateway->payments()->get(
+        //         $billing_request->payment_request->links->payment
+        //     );
 
-                    if (isset($event['details']['description'])) {
-                        $error = $event['details']['description'];
-                    }
+        //     if ($billing_request->status === 'fulfilled') {
+        //         $invoices = Invoice::query()->whereIn('id', $this->transformKeys(array_column($hash->invoices(), 'invoice_id')))->withTrashed()->get();
 
-                    PaymentFailedMailer::dispatch(
-                        $payment_hash,
-                        $payment->client->company,
-                        $payment->client,
-                        $error
-                    );
-                }
-            }
+        //         $this->client = $invoices->first()->client;
 
-            //billing_request fulfilled
-            //
+        //         $invoices->each(function ($invoice) {
+        //             //if payments exist already, they just need to be confirmed.
+        //             if ($invoice->payments()->exists()) {
+        //                 $invoice->payments()->where('status_id', 1)->cursor()->each(function ($payment) {
+        //                     $payment->status_id = 4;
+        //                     $payment->save();
+        //                 });
+        //             }
+        //         });
 
-            //i need to build more context here, i need the client , the payment hash resolved and update the class properties.
-            //after i resolve the payment hash, ensure the invoice has not been marked as paid and the payment does not already exist.
-            //if it does exist, ensure it is completed and not pending.
+        //         // remove all paid invoices
+        //         $invoices->filter(function ($invoice) {
+        //             return $invoice->isPayable();
+        //         });
 
-            // if ($event['action'] == 'fulfilled' && array_key_exists('billing_request', $event['links'])) {
-            //     $hash = PaymentHash::whereJsonContains('data->billing_request', $event['links']['billing_request'])->first();
+        //         //return early if nothing to do
+        //         if ($invoices->count() == 0) {
+        //             nlog("GoCardless: Could not harvest any invoices - probably all paid!!");
+        //             return response()->json([], 200);
+        //         }
 
-            //     if (!$hash) {
-            //         nlog("GoCardless: couldn't find a hash, need to abort => Billing Request => " . $event['links']['billing_request']);
-            //         return response()->json([], 200);
-            //     }
+        //         $this->processSuccessfulPayment($payment);
+        //     }
+        // }
 
-            //     $this->setPaymentHash($hash);
-
-            //     $billing_request = $this->gateway->billingRequests()->get(
-            //         $event['links']['billing_request']
-            //     );
-
-            //     $payment = $this->gateway->payments()->get(
-            //         $billing_request->payment_request->links->payment
-            //     );
-
-            //     if ($billing_request->status === 'fulfilled') {
-            //         $invoices = Invoice::query()->whereIn('id', $this->transformKeys(array_column($hash->invoices(), 'invoice_id')))->withTrashed()->get();
-
-            //         $this->client = $invoices->first()->client;
-
-            //         $invoices->each(function ($invoice) {
-            //             //if payments exist already, they just need to be confirmed.
-            //             if ($invoice->payments()->exists()) {
-            //                 $invoice->payments()->where('status_id', 1)->cursor()->each(function ($payment) {
-            //                     $payment->status_id = 4;
-            //                     $payment->save();
-            //                 });
-            //             }
-            //         });
-
-            //         // remove all paid invoices
-            //         $invoices->filter(function ($invoice) {
-            //             return $invoice->isPayable();
-            //         });
-
-            //         //return early if nothing to do
-            //         if ($invoices->count() == 0) {
-            //             nlog("GoCardless: Could not harvest any invoices - probably all paid!!");
-            //             return response()->json([], 200);
-            //         }
-
-            //         $this->processSuccessfulPayment($payment);
-            //     }
-            // }
-        }
 
         return response()->json([], 200);
     }
@@ -459,8 +430,8 @@ class GoCardlessPaymentDriver extends BaseDriver
         $mandates = $this->gateway->mandates()->list();
 
         foreach ($mandates->records as $mandate) {
-            if ($customer->id != $mandate->links->customer || !in_array($mandate->status,['active', 'pending_submission']) || ClientGatewayToken::where('token', $mandate->id)->where('gateway_customer_reference', $customer->id)->exists()) {
-            // if ($customer->id != $mandate->links->customer || $mandate->status != 'active' || ClientGatewayToken::where('token', $mandate->id)->where('gateway_customer_reference', $customer->id)->exists()) {
+            if ($customer->id != $mandate->links->customer || !in_array($mandate->status, ['active', 'pending_submission']) || ClientGatewayToken::where('token', $mandate->id)->where('gateway_customer_reference', $customer->id)->exists()) {
+                // if ($customer->id != $mandate->links->customer || $mandate->status != 'active' || ClientGatewayToken::where('token', $mandate->id)->where('gateway_customer_reference', $customer->id)->exists()) {
                 continue;
             }
 

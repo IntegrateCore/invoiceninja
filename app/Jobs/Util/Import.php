@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -80,6 +80,7 @@ use App\Utils\Traits\Uploadable;
 use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Queue\InteractsWithQueue;
@@ -248,7 +249,7 @@ class Import implements ShouldQueue
             $this->company->account->companies()->update(['is_large' => true]);
         }
 
-        $this->company->smtp_port = (int)$this->company->smtp_port;
+        $this->company->smtp_port = (int) $this->company->smtp_port;
         $this->company->client_registration_fields = \App\DataMapper\ClientRegistrationFields::generate();
         $this->company->save();
 
@@ -279,13 +280,15 @@ class Import implements ShouldQueue
             VersionCheck::dispatch();
         }
 
-        info('Completed🚀🚀🚀🚀🚀 at '.now());
+        info('Completed🚀🚀🚀🚀🚀 at ' . now());
 
         try {
             unlink($this->file_path);
         } catch (\Exception $e) {
             nlog("problem unsetting file");
         }
+
+        Model::reguard();
     }
 
     private function fixData()
@@ -411,8 +414,8 @@ class Import implements ShouldQueue
         Company::unguard();
 
         if (
-            $data['settings']['invoice_design_id'] > 9 ||
-            $data['settings']['invoice_design_id'] > "9"
+            $data['settings']['invoice_design_id'] > 9
+            || $data['settings']['invoice_design_id'] > "9"
         ) {
             $data['settings']['invoice_design_id'] = 1;
         }
@@ -472,16 +475,59 @@ class Import implements ShouldQueue
         $company_repository->save($data, $this->company);
 
         if (isset($data['settings']->company_logo) && strlen($data['settings']->company_logo) > 0) {
+
             try {
-                $tempImage = tempnam(sys_get_temp_dir(), basename($data['settings']->company_logo));
-                copy($data['settings']->company_logo, $tempImage);
-                $this->uploadLogo($tempImage, $this->company, $this->company);
+                $logoUrl = $data['settings']->company_logo;
+
+                // 1. Validate URL format
+                if (!filter_var($logoUrl, FILTER_VALIDATE_URL)) {
+                    throw new \Exception('Invalid URL format');
+                }
+
+                // 2. Restrict protocols
+                $parsed = parse_url($logoUrl);
+                if (!in_array($parsed['scheme'] ?? '', ['http', 'https'])) {
+                    throw new \Exception('Only HTTP/HTTPS allowed');
+                }
+
+                // 3. Block internal/private IPs (SSRF protection)
+                $host = $parsed['host'] ?? '';
+                $ip = gethostbyname($host);
+                if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+                    throw new \Exception('Internal hosts not allowed');
+                }
+
+                // 4. Use HTTP client with timeout and size limits instead of copy()
+                $response = \Illuminate\Support\Facades\Http::timeout(5)
+                                        ->withOptions([
+                                            'verify' => !Ninja::isSelfHost(), 
+                                            'allow_redirects' => false,
+                                            ])->get($logoUrl);
+
+                if ($response->successful() && strlen($response->body()) < 20 * 1024 * 1024) { // 5MB limit
+                    $tempImage = tempnam(sys_get_temp_dir(), 'logo_');
+                    file_put_contents($tempImage, $response->body());
+                    $this->uploadLogo($tempImage, $this->company, $this->company);
+                    @unlink($tempImage); // Cleanup
+                }
             } catch (\Exception $e) {
                 $settings = $this->company->settings;
                 $settings->company_logo = '';
                 $this->company->settings = $settings;
                 $this->company->save();
+                nlog("Logo import failed: " . $e->getMessage());
             }
+
+            // try {
+            //     $tempImage = tempnam(sys_get_temp_dir(), basename($data['settings']->company_logo));
+            //     copy($data['settings']->company_logo, $tempImage);
+            //     $this->uploadLogo($tempImage, $this->company, $this->company);
+            // } catch (\Exception $e) {
+            //     $settings = $this->company->settings;
+            //     $settings->company_logo = '';
+            //     $this->company->settings = $settings;
+            //     $this->company->save();
+            // }
         }
 
         Company::reguard();
@@ -709,7 +755,8 @@ class Import implements ShouldQueue
 
     private function checkUniqueConstraint($model, $column, $value)
     {
-        $value = trim($value);
+
+        $value = trim($value ?? '');
 
         $model_query = $model::where($column, $value)
                              ->where('company_id', $this->company->id)
@@ -792,7 +839,7 @@ class Import implements ShouldQueue
                                                  ->first();
 
                     if ($contact_match) {
-                        $this->ids['client_contacts']['client_contacts_'.$old_contact['id']] = [
+                        $this->ids['client_contacts']['client_contacts_' . $old_contact['id']] = [
                             'old' => $old_contact['id'],
                             'new' => $contact_match->id,
                         ];
@@ -874,7 +921,7 @@ class Import implements ShouldQueue
                     $modified_contacts[$key]['company_id'] = $this->company->id;
                     $modified_contacts[$key]['user_id'] = $this->processUserId($resource);
                     $modified_contacts[$key]['vendor_id'] = $vendor->id;
-                    $modified_contacts[$key]['password'] = 'mysuperpassword'; // @todo, and clean up the code..
+                    $modified_contacts[$key]['password'] = 'mysuperpassword'; 
                     unset($modified_contacts[$key]['id']);
                 }
 
@@ -1121,7 +1168,7 @@ class Import implements ShouldQueue
             $modified['client_id'] = $this->transformId('clients', $resource['client_id']);
 
             if (array_key_exists('recurring_id', $resource) && !is_null($resource['recurring_id'])) {
-                $modified['recurring_id'] = $this->transformId('recurring_invoices', (string)$resource['recurring_id']);
+                $modified['recurring_id'] = $this->transformId('recurring_invoices', (string) $resource['recurring_id']);
             }
 
             $modified['user_id'] = $this->processUserId($resource);
@@ -1543,7 +1590,7 @@ class Import implements ShouldQueue
 
             $file_url = $resource['url'];
             $file_name = $resource['name'];
-            $file_path = sys_get_temp_dir().'/'.$file_name;
+            $file_path = sys_get_temp_dir() . '/' . $file_name;
 
             try {
                 file_put_contents($file_path, $this->curlGet($file_url));
@@ -1583,7 +1630,7 @@ class Import implements ShouldQueue
         $modified = collect($data)->map(function ($item) {
             $item['user_id'] = $this->user->id;
             $item['company_id'] = $this->company->id;
-            $item['is_deleted'] = isset($item['is_deleted']) ? $item['is_deleted'] : 0;
+            $item['is_deleted'] ??= 0;
 
             return $item;
         })->toArray();
@@ -1656,8 +1703,8 @@ class Import implements ShouldQueue
             $key = "company_gateways_{$resource['id']}";
 
             $this->ids['company_gateways'][$key] = [
-                    'old' => $resource['id'],
-                    'new' => $company_gateway->id,
+                'old' => $resource['id'],
+                'new' => $company_gateway->id,
             ];
         }
 
@@ -1739,7 +1786,7 @@ class Import implements ShouldQueue
 
             $modified['company_id'] = $this->company->id;
             $modified['user_id'] = $this->processUserId($resource);
-            $modified['is_deleted'] = isset($modified['is_deleted']) ? (bool)$modified['is_deleted'] : false;
+            $modified['is_deleted'] = isset($modified['is_deleted']) ? (bool) $modified['is_deleted'] : false;
 
             /** @var \App\Models\ExpenseCategory $expense_category **/
             $expense_category = ExpenseCategory::create($modified);
@@ -1829,6 +1876,12 @@ class Import implements ShouldQueue
 
             if (isset($modified['client_id'])) {
                 $modified['client_id'] = $this->transformId('clients', $resource['client_id']);
+            }
+
+            if (! isset($modified['client_id'])) {
+                nlog('Skipping project import row without client_id (legacy id: ' . ($resource['id'] ?? '') . ')');
+
+                continue;
             }
 
             /** @var \App\Models\Project $project **/
@@ -2088,10 +2141,10 @@ class Import implements ShouldQueue
 
     public function exec($method, $url, $data)
     {
-        $client =  new \GuzzleHttp\Client(['headers' =>
-            [
-            'X-Ninja-Token' => $this->token,
-            ]
+        $client =  new \GuzzleHttp\Client(['headers'
+            => [
+                'X-Ninja-Token' => $this->token,
+            ],
         ]);
 
         $response = $client->request('GET', $url);

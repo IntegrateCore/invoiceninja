@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -13,12 +13,16 @@
 namespace App\Http\Requests\Project;
 
 use App\Http\Requests\Request;
+use App\Models\Project;
 use App\Utils\Traits\ChecksEntityStatus;
 use Illuminate\Validation\Rule;
 
 class UpdateProjectRequest extends Request
 {
     use ChecksEntityStatus;
+
+    /** @var class-string */
+    protected ?string $tag_entity_type = Project::class;
 
     /**
      * Determine if the user is authorized to make this request.
@@ -50,6 +54,8 @@ class UpdateProjectRequest extends Request
         $rules['task_rate'] = 'sometimes|bail|numeric';
         $rules['file'] = 'bail|sometimes|array';
         $rules['file.*'] = $this->fileValidation();
+        $rules['documents'] = 'bail|sometimes|array';
+        $rules['documents.*'] = $this->fileValidation();
 
         return $this->globalRules($rules);
     }
@@ -63,9 +69,7 @@ class UpdateProjectRequest extends Request
             $this->files->set('file', [$this->file('file')]);
         }
 
-        if (isset($input['client_id'])) {
-            unset($input['client_id']);
-        }
+        $input['client_id'] = $this->project->client_id;
 
         if (array_key_exists('color', $input) && is_null($input['color'])) {
             $input['color'] = '';

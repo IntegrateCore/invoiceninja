@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -40,6 +40,7 @@ use App\Events\User\UserLoggedIn;
 use App\Observers\ClientObserver;
 use App\Observers\CreditObserver;
 use App\Observers\VendorObserver;
+use App\Events\User\UserWasPurged;
 use App\Observers\AccountObserver;
 use App\Observers\CompanyObserver;
 use App\Observers\ExpenseObserver;
@@ -74,6 +75,7 @@ use App\Events\Credit\CreditWasViewed;
 use App\Events\Invoice\InvoiceWasPaid;
 use App\Events\Quote\QuoteWasApproved;
 use App\Events\Quote\QuoteWasArchived;
+use App\Events\Quote\QuoteWasRejected;
 use App\Events\Quote\QuoteWasRestored;
 use App\Events\Vendor\VendorWasMerged;
 use App\Listeners\LogResponseReceived;
@@ -131,6 +133,7 @@ use App\Events\Invoice\InvoiceWasReversed;
 use App\Events\Payment\PaymentWasArchived;
 use App\Events\Payment\PaymentWasRefunded;
 use App\Events\Payment\PaymentWasRestored;
+use App\Listeners\User\PurgedUserActivity;
 use Illuminate\Mail\Events\MessageSending;
 use App\Events\Document\DocumentWasCreated;
 use App\Events\Document\DocumentWasDeleted;
@@ -162,6 +165,7 @@ use App\Listeners\Invoice\InvoicePaidActivity;
 use App\Listeners\Payment\PaymentNotification;
 use App\Listeners\Quote\QuoteApprovedActivity;
 use App\Listeners\Quote\QuoteArchivedActivity;
+use App\Listeners\Quote\QuoteRejectedActivity;
 use App\Listeners\Quote\QuoteRestoredActivity;
 use App\Listeners\Quote\ReachWorkflowSettings;
 use App\Events\Company\CompanyDocumentsDeleted;
@@ -221,6 +225,7 @@ use App\Listeners\Invoice\InvoiceRestoredActivity;
 use App\Listeners\Invoice\InvoiceReversedActivity;
 use App\Listeners\Payment\PaymentRestoredActivity;
 use App\Listeners\Quote\QuoteApprovedNotification;
+use App\Listeners\Quote\QuoteRejectedNotification;
 use SocialiteProviders\Apple\AppleExtendSocialite;
 use SocialiteProviders\Manager\SocialiteWasCalled;
 use App\Events\Subscription\SubscriptionWasCreated;
@@ -351,6 +356,9 @@ class EventServiceProvider extends ServiceProvider
         ],
         UserWasRestored::class => [
             RestoredUserActivity::class,
+        ],
+        UserWasPurged::class => [
+            PurgedUserActivity::class,
         ],
         ContactLoggedIn::class => [
             UpdateContactLastLogin::class,
@@ -570,6 +578,10 @@ class EventServiceProvider extends ServiceProvider
             CreatedQuoteActivity::class,
             QuoteCreatedNotification::class,
         ],
+        QuoteWasRejected::class => [
+            QuoteRejectedActivity::class,
+            QuoteRejectedNotification::class,
+        ],
         QuoteWasUpdated::class => [
             QuoteUpdatedActivity::class,
         ],
@@ -696,8 +708,8 @@ class EventServiceProvider extends ServiceProvider
         ],
         \SocialiteProviders\Manager\SocialiteWasCalled::class => [
             // ... Manager won't register drivers that are not added to this listener.
-            \SocialiteProviders\Apple\AppleExtendSocialite::class.'@handle',
-            \SocialiteProviders\Microsoft\MicrosoftExtendSocialite::class.'@handle',
+            \SocialiteProviders\Apple\AppleExtendSocialite::class . '@handle',
+            \SocialiteProviders\Microsoft\MicrosoftExtendSocialite::class . '@handle',
         ],
 
     ];

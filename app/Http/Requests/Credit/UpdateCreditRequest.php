@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -13,10 +13,11 @@
 namespace App\Http\Requests\Credit;
 
 use App\Http\Requests\Request;
-use App\Utils\Traits\ChecksEntityStatus;
-use App\Utils\Traits\CleanLineItems;
 use App\Utils\Traits\MakesHash;
 use Illuminate\Validation\Rule;
+use App\Utils\Traits\CleanLineItems;
+use App\Utils\Traits\ChecksEntityStatus;
+use App\Http\ValidationRules\EInvoice\ValidCreditScheme;
 
 class UpdateCreditRequest extends Request
 {
@@ -51,10 +52,12 @@ class UpdateCreditRequest extends Request
 
         $rules['file'] = 'bail|sometimes|array';
         $rules['file.*'] = $this->fileValidation();
+        $rules['documents'] = 'bail|sometimes|array';
+        $rules['documents.*'] = $this->fileValidation();
 
         $rules['number'] = ['bail', 'sometimes', 'nullable', Rule::unique('credits')->where('company_id', $user->company()->id)->ignore($this->credit->id)];
 
-        $rules['client_id'] = ['bail', 'sometimes',Rule::in([$this->credit->client_id])];
+        $rules['client_id'] = ['bail', 'sometimes', 'integer', Rule::in([$this->credit->client_id])];
 
         $rules['invitations'] = 'sometimes|bail|array';
         $rules['invitations.*.client_contact_id'] = 'bail|required|distinct';
@@ -81,21 +84,19 @@ class UpdateCreditRequest extends Request
 
         $rules['location_id'] = ['nullable', 'sometimes','bail', Rule::exists('locations', 'id')->where('company_id', $user->company()->id)->where('client_id', $this->credit->client_id)];
 
+        $rules['e_invoice'] = ['sometimes', 'nullable', new ValidCreditScheme()];
+
         return $rules;
     }
 
-    public function withValidator($validator)
-    {
-
-
-    }
+    public function withValidator($validator) {}
 
     public function prepareForValidation()
     {
         $input = $this->all();
 
         $input = $this->decodePrimaryKeys($input);
-       
+
         if (isset($input['documents'])) {
             unset($input['documents']);
         }

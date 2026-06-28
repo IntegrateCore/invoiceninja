@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -45,12 +45,14 @@ class UpdateQuoteRequest extends Request
 
         $rules['file'] = 'bail|sometimes|array';
         $rules['file.*'] = $this->fileValidation();
+        $rules['documents'] = 'bail|sometimes|array';
+        $rules['documents.*'] = $this->fileValidation();
 
         $rules['invitations'] = 'sometimes|bail|array';
         $rules['invitations.*.client_contact_id'] = 'bail|required|distinct';
 
         $rules['number'] = ['bail', 'sometimes', 'nullable', Rule::unique('quotes')->where('company_id', $user->company()->id)->ignore($this->quote->id)];
-        $rules['client_id'] = ['bail', 'sometimes', Rule::in([$this->quote->client_id])];
+        $rules['client_id'] = ['bail', 'sometimes', 'integer', Rule::in([$this->quote->client_id])];
         $rules['line_items'] = 'array';
         $rules['discount'] = 'sometimes|numeric|max:99999999999999';
         $rules['is_amount_discount'] = ['boolean'];
@@ -59,7 +61,7 @@ class UpdateQuoteRequest extends Request
         $rules['date'] = 'bail|sometimes|date:Y-m-d';
 
         $rules['partial_due_date'] = ['bail', 'sometimes', 'nullable', 'exclude_if:partial,0', 'date', 'before:due_date', 'after_or_equal:date'];
-        $rules['due_date'] = ['bail', 'sometimes', 'nullable', 'after:partial_due_date', 'after_or_equal:date', Rule::requiredIf(fn () => strlen($this->partial_due_date) > 1), 'date'];
+        $rules['due_date'] = ['bail', 'sometimes', 'nullable', 'after:partial_due_date', 'after_or_equal:date', Rule::requiredIf(fn() => strlen($this->partial_due_date ?? '') > 1), 'date'];
         $rules['amount'] = ['sometimes', 'bail', 'numeric', 'max:99999999999999'];
 
         $rules['custom_surcharge1'] = ['sometimes', 'nullable', 'bail', 'numeric', 'max:99999999999999'];

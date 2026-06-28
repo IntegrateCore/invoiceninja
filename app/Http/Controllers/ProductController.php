@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -474,7 +474,7 @@ class ProductController extends BaseController
 
         $ids = $request->input('ids');
 
-        $products = Product::withTrashed()->whereIn('id', $ids);
+        $products = Product::withTrashed()->company()->whereIn('id', $ids);
 
         if ($action == 'set_tax_id') {
 
@@ -482,7 +482,7 @@ class ProductController extends BaseController
 
             $products->update(['tax_id' => $tax_id]);
 
-            return $this->listResponse(Product::withTrashed()->whereIn('id', $ids));
+            return $this->listResponse(Product::withTrashed()->company()->whereIn('id', $ids));
         }
 
         $products->cursor()->each(function ($product, $key) use ($action, $user) {
@@ -491,7 +491,7 @@ class ProductController extends BaseController
             }
         });
 
-        return $this->listResponse(Product::withTrashed()->whereIn('id', $ids));
+        return $this->listResponse(Product::withTrashed()->company()->whereIn('id', $ids));
     }
 
     /**

@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -544,13 +544,15 @@ class QuoteController extends BaseController
          * Download Quote/s
          */
         if ($action == 'bulk_download' && $quotes->count() >= 1) {
-            $quotes->each(function ($quote) use ($user) {
-                if ($user->cannot('view', $quote)) {
-                    return response()->json(['message' => ctrans('texts.access_denied')]);
-                }
+            $authorized = $quotes->filter(function ($quote) use ($user) {
+                return $user->can('view', $quote);
             });
 
-            ZipQuotes::dispatch($quotes->pluck('id')->toArray(), $quotes->first()->company, auth()->user());
+            if ($authorized->isEmpty()) {
+                return response()->json(['message' => ctrans('texts.access_denied')], 403);
+            }
+
+            ZipQuotes::dispatch($authorized->pluck('id')->toArray(), $authorized->first()->company, auth()->user());
 
             return response()->json(['message' => ctrans('texts.sent_message')], 200);
         }
@@ -569,7 +571,15 @@ class QuoteController extends BaseController
             return $this->listResponse(Quote::query()->withTrashed()->whereIn('id', $this->transformKeys($ids))->company());
         }
 
-        if ($action == 'bulk_print' && $user->can('view', $quotes->first())) {
+        if ($action == 'bulk_print') {
+            $quotes = $quotes->filter(function ($quote) use ($user) {
+                return $user->can('view', $quote);
+            });
+
+            if ($quotes->isEmpty()) {
+                return response()->json(['message' => ctrans('texts.access_denied')], 403);
+            }
+
 
             $start = microtime(true);
 
@@ -598,7 +608,7 @@ class QuoteController extends BaseController
             }, 'print.pdf', [
                 'Content-Type' => 'application/pdf',
                 'Cache-Control:' => 'no-cache',
-                'Server-Timing' => (string)(microtime(true) - $start)
+                'Server-Timing' => (string) (microtime(true) - $start),
             ]);
 
 

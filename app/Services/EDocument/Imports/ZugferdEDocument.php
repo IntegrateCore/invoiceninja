@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -47,7 +47,11 @@ class ZugferdEDocument extends AbstractService
     }
 
     /**
+     * Parses a Zugferd/Factur-X XML or PDF, creates an expense with vendor,
+     * renders a PDF visualisation, and attaches documents.
+     *
      * @throws Exception
+     * @return Expense
      */
     public function run(): Expense
     {
@@ -138,7 +142,7 @@ class ZugferdEDocument extends AbstractService
 
                 $country = app('countries')->first(function ($c) use ($country) {
                     /** @var \App\Models\Country $c */
-                    return $c->iso_3166_2 == $country || $c->iso_3166_3 == $country;
+                    return $c->iso_3166_2 == strtoupper($country) || $c->iso_3166_3 == strtoupper($country);
                 });
                 if ($country) {
                     $vendor->country_id = $country->id;

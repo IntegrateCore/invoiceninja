@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -15,6 +15,7 @@ namespace App\Services\EDocument\Standards\Validation;
 use App\Models\Client;
 use App\Models\Company;
 use App\Models\Invoice;
+use App\Models\RecurringInvoice;
 
 interface EntityLevelInterface
 {
@@ -23,5 +24,7 @@ interface EntityLevelInterface
     public function checkCompany(Company $company): array;
 
     public function checkInvoice(Invoice $invoice): array;
+
+    public function checkRecurringInvoice(RecurringInvoice $recurring_invoice): array;
 
 }

@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -51,7 +51,7 @@ class CreditExport extends BaseExport
             return ['identifier' => $key, 'display_value' => $headerdisplay[$value]];
         })->toArray();
 
-        $report = $query->cursor()
+        $report = $this->streamQuery($query)
                 ->map(function ($credit) {
 
                     /** @var \App\Models\Credit $credit */
@@ -104,7 +104,7 @@ class CreditExport extends BaseExport
 
         $query = Credit::query()
                         ->withTrashed()
-                        ->with('client')
+                        ->with('client', 'location')
                         ->whereHas('client', function ($q) {
                             $q->where('is_deleted', false);
                         })
@@ -146,7 +146,7 @@ class CreditExport extends BaseExport
         //insert the header
         $this->csv->insertOne($this->buildHeader());
 
-        $query->cursor()
+        $this->streamQuery($query)
             ->each(function ($credit) {
                 /** @var \App\Models\Credit $credit */
                 $this->csv->insertOne($this->buildRow($credit));
@@ -155,7 +155,7 @@ class CreditExport extends BaseExport
         return $this->csv->toString();
     }
 
-    private function buildRow(Credit $credit): array
+    protected function buildRow(Credit $credit): array
     {
         $transformed_credit = $this->credit_transformer->transform($credit);
 
@@ -251,6 +251,9 @@ class CreditExport extends BaseExport
             $entity['credit.user_id'] = $credit->user ? $credit->user->present()->name() : ''; //@phpstan-ignore-line
         }
 
+        if (in_array('credit.subtotal', $this->input['report_keys'])) {
+            $entity['credit.subtotal'] = $credit->calc()->getSubTotal();
+        }
         return $entity;
     }
 }

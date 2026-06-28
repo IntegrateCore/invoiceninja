@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -186,6 +186,10 @@ class SettingsData
 
     public bool $require_purchase_order_signature = false;  //@TODO ben to confirm
 
+    public bool $require_invoice_signature = false;  //@TODO ben to confirm
+
+    public bool $require_quote_signature = false;  //@TODO ben to confirm
+
     public string $invoice_footer = ''; //@implemented
 
     public string $credit_footer = ''; //@implemented
@@ -275,6 +279,10 @@ class SettingsData
     public string $email_template_reminder3 = ''; //@implemented
 
     public string $email_template_reminder_endless = ''; //@implemented
+
+    public string $email_template_payment_failed = ''; //@implemented
+
+    public string $email_subject_payment_failed = ''; //@implemented
 
     public string $email_signature = ''; //@implemented
 
@@ -481,7 +489,7 @@ class SettingsData
 
                 try {
                     settype($object->{$key}, gettype($this->{$key}));
-                } catch (\Exception | \Error | \Throwable $e) {
+                } catch (\Exception|\Error|\Throwable $e) { //@phpstan-ignore-line
 
                     if (property_exists($this, $key)) {
                         $object->{$key} = $this->{$key};
@@ -491,15 +499,6 @@ class SettingsData
 
                 }
 
-                // if(!property_exists($this, $key)) {
-                //     unset($object->{$key});
-                // }
-                // elseif(is_array($object->{$key}) && gettype($this->{$key} != 'array')){
-                //     $object->{$key} = $this->{$key};
-                // }
-                // else {
-                //     settype($object->{$key}, gettype($this->{$key}));
-                // }
             }
         }
         $this->object = $object;

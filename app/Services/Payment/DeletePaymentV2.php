@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -15,8 +15,10 @@ namespace App\Services\Payment;
 use App\Models\Credit;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\Paymentable;
 use App\Models\BankTransaction;
 use App\Listeners\Payment\PaymentTransactionEventEntry;
+use App\Services\EDocument\Standards\France\FrancePaymentApplicationRecorder;
 use App\Utils\BcMath;
 use Illuminate\Contracts\Container\BindingResolutionException;
 
@@ -29,9 +31,7 @@ class DeletePaymentV2
      * @param Payment $payment
      * @return void
      */
-    public function __construct(public Payment $payment, private bool $update_client_paid_to_date)
-    {
-    }
+    public function __construct(public Payment $payment, private bool $update_client_paid_to_date) {}
 
     /**
      * @return Payment
@@ -99,7 +99,7 @@ class DeletePaymentV2
     private function updateCreditables(): self
     {
         if ($this->payment->credits()->exists()) {
-            $this->payment->credits()->where('is_deleted', 0)->each(function ($paymentable_credit) {
+            $this->payment->credits()->each(function ($paymentable_credit) {
                 $multiplier = 1;
 
                 //balance remaining on the credit that can offset the paid to date.
@@ -124,11 +124,13 @@ class DeletePaymentV2
                                    ->setStatus(Credit::STATUS_SENT)
                                    ->save();
 
-                $client = $this->payment->client->fresh();
+                if (!$paymentable_credit->is_deleted) {
+                    $client = $this->payment->client->fresh();
 
-                $client->service()
-                        ->adjustCreditBalance($net_credit_amount)
-                        ->save();
+                    $client->service()
+                            ->adjustCreditBalance($net_credit_amount)
+                            ->save();
+                }
             });
         }
 
@@ -158,7 +160,15 @@ class DeletePaymentV2
 
                 $this->_paid_to_date_deleted = BcMath::add($this->_paid_to_date_deleted, $net_deletable, 2);
 
-                $paymentable_invoice = $paymentable_invoice->fresh();
+                /* Lock the invoice row to prevent races with concurrent MarkPaid / ApplyPayment.
+                   Without this, MarkPaid can read a mid-flight balance and either create a $0
+                   payment or set status incorrectly. */
+
+                /** 2026-05-05 - Take a lock on the invoice row to prevent race conditions with MarkPaid */
+                $paymentable_invoice = Invoice::withTrashed()
+                    ->where('id', $paymentable_invoice->id)
+                    ->lockForUpdate()
+                    ->first();
 
                 /** For cancelled invoices, we only reduce the paid to date - balance never changes */
                 if ($paymentable_invoice->status_id == Invoice::STATUS_CANCELLED) {
@@ -188,7 +198,7 @@ class DeletePaymentV2
                 } elseif (!$paymentable_invoice->is_deleted) {
                     $paymentable_invoice->restore();
 
-                    $paymentable_invoice->service()
+                    $paymentable_invoice = $paymentable_invoice->service()
                                         ->updateBalance($net_deletable)
                                         ->updatePaidToDate(BcMath::mul($net_deletable, -1, 2))
                                         ->save();
@@ -224,6 +234,30 @@ class DeletePaymentV2
                                         ->save();
                     $paymentable_invoice->delete();
 
+                }
+
+                try {
+                    $paymentable_invoice->loadMissing(['client.country', 'client.company']);
+
+                    if ($paymentable_invoice->client->reportableFrTransaction()) {
+                        $paymentable = Paymentable::withTrashed()
+                            ->where('payment_id', $this->payment->id)
+                            ->where('paymentable_id', $paymentable_invoice->id)
+                            ->where('paymentable_type', 'invoices')
+                            ->latest('id')
+                            ->first();
+
+                        app(FrancePaymentApplicationRecorder::class)->recordMovement(
+                            payment: $this->payment,
+                            invoice: $paymentable_invoice,
+                            paymentable: $paymentable,
+                            movementAmount: BcMath::mul($net_deletable, -1, 2),
+                            movementDate: now()->toDateString(),
+                            movementType: FrancePaymentApplicationRecorder::MOVEMENT_DELETED,
+                        );
+                    }
+                } catch (\Throwable $exception) {
+                    report($exception);
                 }
 
                 PaymentTransactionEventEntry::dispatch($this->payment, [$paymentable_invoice->id], $this->payment->company->db, $net_deletable, true);

@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -15,7 +15,6 @@ namespace App\Livewire\Flow2;
 use Livewire\Component;
 use App\Libraries\MultiDB;
 use App\Models\CompanyGateway;
-use Livewire\Attributes\Computed;
 use App\Services\Client\RFFService;
 use App\Utils\Traits\WithSecureContext;
 
@@ -53,7 +52,9 @@ class RequiredFields extends Component
     public bool $is_loading = true;
 
     public array $errors = [];
+    
     public $_key;
+
     public function mount(): void
     {
         $_context = $this->getContext($this->_key);
@@ -67,7 +68,6 @@ class RequiredFields extends Component
         $contact = auth()->guard('contact')->user();
 
         $this->company_gateway = CompanyGateway::withTrashed()
-            ->with('company')
             ->find($_context['company_gateway_id']);
 
         $this->client_name = $contact->client->name;
@@ -93,7 +93,7 @@ class RequiredFields extends Component
         $rff = new RFFService(
             fields: $_context['fields'],
             database: $_context['db'],
-            company_gateway_id: (string)$this->company_gateway->id,
+            company_gateway_id: (string) $this->company_gateway->id,
         );
 
         /** @var \App\Models\ClientContact $contact */
@@ -115,7 +115,7 @@ class RequiredFields extends Component
         $rff = new RFFService(
             fields: $this->fields,
             database: $this->getContext($this->_key)['db'],
-            company_gateway_id: (string)$this->company_gateway->id,
+            company_gateway_id: (string) $this->company_gateway->id,
         );
 
         $contact = auth()->guard('contact')->user();

@@ -27,20 +27,15 @@ use App\DataMapper\CompanySettings;
 use App\Factory\CompanyUserFactory;
 use App\Repositories\InvoiceRepository;
 use InvoiceNinja\EInvoice\EInvoice;
-use InvoiceNinja\EInvoice\Symfony\Encode;
 use App\Services\EDocument\Standards\Peppol;
-use App\Services\EDocument\Standards\FatturaPANew;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use InvoiceNinja\EInvoice\Models\Peppol\PaymentMeans;
 use App\Services\EDocument\Gateway\Storecove\Storecove;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
-use InvoiceNinja\EInvoice\Models\FatturaPA\FatturaElettronica;
-use App\Services\EDocument\Standards\Validation\Peppol\InvoiceLevel;
+use App\Services\EDocument\Standards\Validation\Peppol\EntityLevel;
 use App\Services\EDocument\Standards\Validation\XsltDocumentValidator;
 use InvoiceNinja\EInvoice\Models\Peppol\BranchType\FinancialInstitutionBranch;
 use InvoiceNinja\EInvoice\Models\Peppol\FinancialAccountType\PayeeFinancialAccount;
-use InvoiceNinja\EInvoice\Models\FatturaPA\FatturaElettronicaBodyType\FatturaElettronicaBody;
-use InvoiceNinja\EInvoice\Models\FatturaPA\FatturaElettronicaHeaderType\FatturaElettronicaHeader;
 
 class PeppolTest extends TestCase
 {
@@ -54,6 +49,12 @@ class PeppolTest extends TestCase
 
         if (config('ninja.testvars.travis') !== false) {
             $this->markTestSkipped('Skip test for GH Actions');
+        }
+
+        try {
+            $processor = new \Saxon\SaxonProcessor();
+        } catch (\Throwable $e) {
+            $this->markTestSkipped('saxon not installed');
         }
 
         $this->faker = Factory::create();
@@ -73,6 +74,7 @@ class PeppolTest extends TestCase
         $settings->country_id = Country::where('iso_3166_2', 'DE')->first()->id;
         $settings->email = $this->faker->safeEmail();
         $settings->currency_id = '3';
+        $settings->e_invoice_type = 'PEPPOL'; // Required for validation endpoint to run EntityLevel validation
 
         $tax_data = new TaxModel();
         $tax_data->regions->EU->has_sales_above_threshold = $params['over_threshold'] ?? false;
@@ -124,6 +126,7 @@ class PeppolTest extends TestCase
             'name' => 'Test Client',
             'is_tax_exempt' => $params['is_tax_exempt'] ?? false,
             'id_number' => $params['client_id_number'] ?? '',
+            'routing_id' => '',
         ]);
 
         $client->setRelation('company', $company);
@@ -180,6 +183,46 @@ class PeppolTest extends TestCase
         return compact('company', 'client', 'invoice');
     }
 
+
+    // {
+    //     "legalEntityId": 100000099999,
+    //     "document": {
+    //       "documentType": "enveloped_data",
+    //       "envelopedData": {
+    //         "document": "PEludm9pY2U+PC9JbnZvaWNlPg==",
+    //         "application": "peppol",
+    //         "processIdSchemeId": "cenbii-procid-ubl",
+    //         "processId": "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0",
+    //         "documentIdSchemeId": "busdox-docid-qns",
+    //         "documentId": "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2::Invoice##urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0::2.1",
+    //         "envelope": {
+    //           "sender": "9930:DE010101010",
+    //           "receiver": "9930:DE010101010",
+    //           "requestMls": "on_error"
+    //         },
+    //         "metadata": {
+    //           "documentNumber": "1234567890",
+    //           "documentDate": "2025-05-16",
+    //           "receiverName": "John Doe",
+    //           "receiverCountry": "DE",
+    //           "payloadType": "Invoice"
+    //         }
+    //       }
+    //     }
+    //   }
+
+    /**
+     * Stubbed if and when we need to send the raw XML
+     * due to Storecoves inability to handle special features:
+     * 
+     * ie: attaching documents in base64. 
+     *
+     * @return void
+     */
+    public function envelopedMode()
+    {
+        
+    }
 
     public function testBeToBeWithSpecialLineItemConfiguration()
     {
@@ -305,7 +348,7 @@ class PeppolTest extends TestCase
         $peppol->setInvoiceDefaults();
         $peppol->run();
 
-        $be_invoice = $peppol->getInvoice();
+        $be_invoice = $peppol->getDocument();
 
         $this->assertNotNull($be_invoice);
 
@@ -339,7 +382,7 @@ class PeppolTest extends TestCase
             nlog($validator->getErrors());
         }
 
-        $this->assertCount(0, $validator->getErrors());
+        $this->assertCount(0, $validator->getErrors(), "XSLT validation errors: " . json_encode($validator->getErrors()));
 
     }
 
@@ -463,7 +506,7 @@ class PeppolTest extends TestCase
 
             $p = new Peppol($invoice);
             nlog($p->run()->toXml());
-            nlog($invoice->withoutRelations()->toArray());
+            // nlog($invoice->withoutRelations()->toArray());
             nlog($response->json());
         }
 
@@ -535,18 +578,361 @@ class PeppolTest extends TestCase
         $client->city = '';
         $client->save();
 
+        // Reload the client to ensure changes are persisted
+        $client = $client->refresh();
+
+        // Direct EntityLevel test to debug validation
+        $entityLevel = new EntityLevel();
+        $directResult = $entityLevel->checkClient($client);
+         
+        // Assert direct validation fails
+        $this->assertFalse($directResult['passes'], 'Direct EntityLevel validation should fail when address1 and city are empty');
+        $this->assertNotEmpty($directResult['client'], 'Direct EntityLevel should have client validation errors');
+
         $data = [
             'entity' => 'clients',
             'entity_id' => $client->hashed_id
         ];
 
+        
         $response = $this->withHeaders([
             'X-API-SECRET' => config('ninja.api_secret'),
             'X-API-TOKEN' => $this->token,
         ])->postJson('/api/v1/einvoice/validateEntity', $data);
 
+        // Log the response for debugging
+       
         $response->assertStatus(422);
 
+    }
+
+    public function testEntityLevelDirectlyValidatesClientWithMissingAddress()
+    {
+        $scenario = [
+            'company_vat' => 'DE923356489',
+            'company_country' => 'DE',
+            'client_country' => 'FR',
+            'client_vat' => 'FRAA123456789',
+            'client_id_number' => '123456789',
+            'classification' => 'business',
+            'has_valid_vat' => true,
+            'over_threshold' => true,
+            'legal_entity_id' => 290868,
+            'is_tax_exempt' => false,
+        ];
+
+        $entity_data = $this->setupTestData($scenario);
+        $client = $entity_data['client'];
+        
+        // Clear required address fields
+        $client->address1 = '';
+        $client->city = '';
+        $client->save();
+
+        // Directly instantiate and test EntityLevel
+        $entityLevel = new EntityLevel();
+        $result = $entityLevel->checkClient($client);
+
+        // Assert validation fails
+        $this->assertFalse($result['passes'], 'Validation should fail when address1 and city are empty');
+        $this->assertNotEmpty($result['client'], 'Should have client validation errors');
+        
+        // Check that address errors are present
+        $errorFields = array_column($result['client'], 'field');
+        $this->assertContains('address1', $errorFields, 'Should have address1 error');
+        $this->assertContains('city', $errorFields, 'Should have city error');
+    }
+
+    /**
+     * Test VAT number validation for various EU countries with valid formats.
+     * Tests that valid VAT numbers pass validation.
+     */
+    public function testVatNumberValidationWithValidFormats()
+    {
+        $validVatNumbers = [
+            'AT' => ['ATU12345678', 'U12345678', 'AT U 12345678', 'U-123-456-78'], // U + 8 digits
+            'BE' => ['BE0123456789', '0123456789', 'BE 0 123456789', '0-123-456-789'], // 0 + 9 digits
+            'BG' => ['BG123456789', '123456789', 'BG 1234567890', '123-456-789-0'], // 9-10 digits
+            'CY' => ['CY12345678A', '12345678A', 'CY 12345678 A', '12345678-A'], // 8 digits + 1 letter
+            'CZ' => ['CZ12345678', '12345678', 'CZ 1234567890', '123-456-789-0'], // 8-10 digits
+            'DE' => ['DE123456789', '123456789', 'DE 123456789', '123-456-789'], // 9 digits
+            'DK' => ['DK12345678', '12345678', 'DK 12345678', '123-456-78'], // 8 digits
+            'EE' => ['EE123456789', '123456789', 'EE 123456789', '123-456-789'], // 9 digits
+            'ES' => ['ESA1234567B', 'A1234567B', 'ES A 1234567 B', 'A-123-456-7-B'], // 1 alphanumeric + 7 digits + 1 alphanumeric
+            'FI' => ['FI12345678', '12345678', 'FI 12345678', '123-456-78'], // 8 digits
+            'FR' => ['FRAA123456789', 'AA123456789', 'FR AA 123456789', 'AA-123-456-789'], // 2 alphanumeric + 9 digits
+            'GR' => ['GR123456789', 'EL123456789', 'GR 123456789', 'EL-123-456-789'], // 9 digits
+            'HR' => ['HR12345678901', '12345678901', 'HR 12345678901', '123-456-789-01'], // 11 digits
+            'HU' => ['HU12345678', '12345678', 'HU 12345678', '123-456-78'], // 8 digits
+            'IE' => ['IE1234567A', '1234567A', 'IE 1 234567 A', '1-234-567-A'], // 1 digit + 1 alphanumeric + 5 digits + 1 letter
+            'IT' => ['IT12345678901', '12345678901', 'IT 12345678901', '123-456-789-01'], // 11 digits
+            'LT' => ['LT123456789', '123456789', 'LT 123456789012', '123-456-789-012'], // 9 or 12 digits
+            'LU' => ['LU12345678', '12345678', 'LU 12345678', '123-456-78'], // 8 digits
+            'LV' => ['LV12345678901', '12345678901', 'LV 12345678901', '123-456-789-01'], // 11 digits
+            'MT' => ['MT12345678', '12345678', 'MT 12345678', '123-456-78'], // 8 digits
+            'NL' => ['NL123456789B01', '123456789B01', 'NL 123456789 B 01', '123-456-789-B-01'], // 9 digits + B + 2 digits
+            'PL' => ['PL1234567890', '1234567890', 'PL 1234567890', '123-456-789-0'], // 10 digits
+            'PT' => ['PT123456789', '123456789', 'PT 123456789', '123-456-789'], // 9 digits
+            'RO' => ['RO12345678', '12345678', 'RO 1234567890', '123-456-789-0'], // 2-10 digits
+            'SE' => ['SE123456789001', '123456789001', 'SE 123456789001', '123-456-789-001'], // 12 digits
+            'SI' => ['SI12345678', '12345678', 'SI 12345678', '123-456-78'], // 8 digits
+            'SK' => ['SK1234567890', '1234567890', 'SK 1234567890', '123-456-789-0'], // 10 digits
+        ];
+
+        foreach ($validVatNumbers as $countryCode => $vatNumbers) {
+            foreach ($vatNumbers as $vatNumber) {
+                $scenario = [
+                    'company_vat' => 'DE923356489',
+                    'company_country' => 'DE',
+                    'client_country' => $countryCode,
+                    'client_vat' => $vatNumber,
+                    'client_id_number' => '123456789',
+                    'classification' => 'business',
+                    'has_valid_vat' => true,
+                    'over_threshold' => true,
+                    'legal_entity_id' => 290868,
+                    'is_tax_exempt' => false,
+                ];
+
+                $entity_data = $this->setupTestData($scenario);
+                $client = $entity_data['client'];
+                
+                // Ensure client has required address fields
+                $client->address1 = 'Test Address';
+                $client->city = 'Test City';
+                $client->postal_code = '12345';
+                $client->save();
+
+                $entityLevel = new EntityLevel();
+                $result = $entityLevel->checkClient($client);
+
+                $errorFields = array_column($result['client'], 'field');
+                $errorLabels = array_column($result['client'], 'label');
+                $errorFields = array_column($result['client'], 'field');
+                
+                // Should not have invalid_vat_number error (check both field and translated label)
+                $hasInvalidVatError = in_array('vat_number', $errorFields) && 
+                    in_array(ctrans('texts.invalid_vat_number'), $errorLabels);
+                $this->assertFalse($hasInvalidVatError, 
+                    "VAT number '{$vatNumber}' for country '{$countryCode}' should be valid");
+            }
+        }
+    }
+
+    /**
+     * Test VAT number validation for various EU countries with invalid formats.
+     * Tests that invalid VAT numbers fail validation.
+     *
+     * Disabled: depends on VAT format validation in EntityLevel::checkClient()
+     * which is currently commented out (EntityLevel.php lines 196-222).
+     * Re-enable when that validation is reimplemented.
+     */
+    /*
+    public function testVatNumberValidationWithInvalidFormats()
+    {
+        $invalidVatNumbers = [
+            'AT' => ['AT123456789', 'U1234567', 'U1234567890', 'ATU1234'], // Missing U, wrong digit count
+            'BE' => ['BE123456789', '123456789', 'BE012345678', '012345678'], // Missing leading 0 or wrong length
+            'BG' => ['BG12345678', '12345678', 'BG12345678901', '12345678901'], // Wrong length (not 9-10)
+            'CY' => ['CY12345678', '1234567A', '123456789A', '12345678'], // Missing letter, wrong digit count, or no letter
+            'CZ' => ['CZ1234567', '1234567', 'CZ12345678901', '12345678901'], // Wrong length (not 8-10)
+            'DE' => ['DE12345678', '12345678', 'DE1234567890', '1234567890'], // Wrong length (not 9)
+            'DK' => ['DK1234567', '1234567', 'DK123456789', '123456789'], // Wrong length (not 8)
+            'EE' => ['EE12345678', '12345678', 'EE1234567890', '1234567890'], // Wrong length (not 9)
+            'ES' => ['ES12345678', '12345678', 'ESA123456', 'A123456'], // Wrong format (not 1 alphanumeric + 7 digits + 1 alphanumeric)
+            'FI' => ['FI1234567', '1234567', 'FI123456789', '123456789'], // Wrong length (not 8)
+            'FR' => ['FRAA12345678', 'AA12345678', 'FR12345678', '12345678'], // Wrong length (needs 2 alphanumeric + 9 digits = 11 chars after optional FR)
+            'GR' => ['GR12345678', '12345678', 'GR1234567890', '1234567890'], // Wrong length (not 9)
+            'HR' => ['HR1234567890', '1234567890', 'HR123456789012', '123456789012'], // Wrong length (not 11)
+            'HU' => ['HU1234567', '1234567', 'HU123456789', '123456789'], // Wrong length (not 8)
+            'IE' => ['IE123456', '123456', 'IE12345678A', '12345678A'], // Wrong format (not 1 digit + 1 alphanumeric + 5 digits + 1-2 letters)
+            'IT' => ['IT1234567890', '1234567890', 'IT123456789012', '123456789012'], // Wrong length (not 11)
+            'LT' => ['LT12345678', '12345678', 'LT12345678901', '12345678901'], // Wrong length (not 9 or 12)
+            'LU' => ['LU1234567', '1234567', 'LU123456789', '123456789'], // Wrong length (not 8)
+            'LV' => ['LV1234567890', '1234567890', 'LV123456789012', '123456789012'], // Wrong length (not 11)
+            'MT' => ['MT1234567', '1234567', 'MT123456789', '123456789'], // Wrong length (not 8)
+            'NL' => ['NL123456789', '123456789', 'NL123456789B', '123456789B'], // Missing B01 suffix
+            'PL' => ['PL123456789', '123456789', 'PL12345678901', '12345678901'], // Wrong length (not 10)
+            'PT' => ['PT12345678', '12345678', 'PT1234567890', '1234567890'], // Wrong length (not 9)
+            'RO' => ['RO1', '1', 'RO12345678901', '12345678901'], // Too short (1 digit) or too long (11 digits, max is 10)
+            'SE' => ['SE12345678900', '12345678900', 'SE1234567890012', '1234567890012'], // Wrong length (not 12)
+            'SI' => ['SI1234567', '1234567', 'SI123456789', '123456789'], // Wrong length (not 8)
+            'SK' => ['SK123456789', '123456789', 'SK12345678901', '12345678901'], // Wrong length (not 10)
+        ];
+
+        foreach ($invalidVatNumbers as $countryCode => $vatNumbers) {
+            foreach ($vatNumbers as $vatNumber) {
+                $scenario = [
+                    'company_vat' => 'DE923356489',
+                    'company_country' => 'DE',
+                    'client_country' => $countryCode,
+                    'client_vat' => $vatNumber,
+                    'client_id_number' => '123456789',
+                    'classification' => 'business',
+                    'has_valid_vat' => true,
+                    'over_threshold' => true,
+                    'legal_entity_id' => 290868,
+                    'is_tax_exempt' => false,
+                ];
+
+                $entity_data = $this->setupTestData($scenario);
+                $client = $entity_data['client'];
+                
+                // Ensure client has required address fields
+                $client->address1 = 'Test Address';
+                $client->city = 'Test City';
+                $client->postal_code = '12345';
+                $client->save();
+
+                $entityLevel = new EntityLevel();
+                $result = $entityLevel->checkClient($client);
+
+                $errorLabels = array_column($result['client'], 'label');
+                $errorFields = array_column($result['client'], 'field');
+                
+                // Should have vat_number field error with invalid format label
+                $hasInvalidVatError = in_array('vat_number', $errorFields);
+                $this->assertTrue($hasInvalidVatError,
+                    "VAT number '{$vatNumber}' for country '{$countryCode}' should be invalid");
+            }
+        }
+    }
+    */
+
+    /**
+     * Test that VAT number validation is skipped for individuals and government entities.
+     */
+    public function testVatNumberValidationSkippedForIndividualsAndGovernment()
+    {
+        $classifications = ['individual', 'government'];
+        
+        foreach ($classifications as $classification) {
+            $scenario = [
+                'company_vat' => 'DE923356489',
+                'company_country' => 'DE',
+                'client_country' => 'DE',
+                'client_vat' => '', // Empty VAT number
+                'client_id_number' => '04011000-1234567890-06', // valid DE:LWID format
+                'classification' => $classification,
+                'has_valid_vat' => false,
+                'over_threshold' => true,
+                'legal_entity_id' => 290868,
+                'is_tax_exempt' => false,
+            ];
+
+            $entity_data = $this->setupTestData($scenario);
+            $client = $entity_data['client'];
+            
+            // Ensure client has required address fields
+            $client->address1 = 'Test Address';
+            $client->city = 'Test City';
+            $client->postal_code = '12345';
+            $client->save();
+
+            $entityLevel = new EntityLevel();
+            $result = $entityLevel->checkClient($client);
+
+            $errorFields = array_column($result['client'], 'field');
+            
+            // Should not have vat_number error for individuals/government
+            $this->assertNotContains('vat_number', $errorFields, 
+                "VAT number should not be required for '{$classification}' classification");
+        }
+    }
+
+    /**
+     * Test that VAT number is required for business entities in EU countries.
+     */
+    public function testVatNumberRequiredForBusinessInEU()
+    {
+        $scenario = [
+            'company_vat' => 'DE923356489',
+            'company_country' => 'DE',
+            'client_country' => 'DE',
+            'client_vat' => '', // Empty VAT number
+            'client_id_number' => '123456789',
+            'classification' => 'business',
+            'has_valid_vat' => false,
+            'over_threshold' => true,
+            'legal_entity_id' => 290868,
+            'is_tax_exempt' => false,
+        ];
+
+        $entity_data = $this->setupTestData($scenario);
+        $client = $entity_data['client'];
+        
+        // Ensure client has required address fields
+        $client->address1 = 'Test Address';
+        $client->city = 'Test City';
+        $client->postal_code = '12345';
+        $client->save();
+
+        $entityLevel = new EntityLevel();
+        $result = $entityLevel->checkClient($client);
+
+        $errorFields = array_column($result['client'], 'field');
+        
+        // Should have vat_number error for business in EU
+        $this->assertContains('vat_number', $errorFields, 
+            'VAT number should be required for business entities in EU countries');
+    }
+
+    /**
+     * Test VAT number validation with special characters (spaces, dots, dashes).
+     * These should be stripped before validation.
+     */
+    public function testVatNumberValidationWithSpecialCharacters()
+    {
+        $testCases = [
+            ['DE', 'DE 123 456 789', true], // Valid with spaces
+            ['DE', 'DE-123-456-789', true], // Valid with dashes
+            ['DE', 'DE.123.456.789', true], // Valid with dots
+            ['FR', 'FR AA 123 456 789', true], // Valid with spaces
+            ['FR', 'FR-AA-123-456-789', true], // Valid with dashes
+            ['NL', 'NL 123 456 789 B 01', true], // Valid with spaces
+            ['NL', 'NL-123-456-789-B-01', true], // Valid with dashes
+            ['DE', 'DE 123 456 78', false], // Invalid (wrong length) even with spaces
+        ];
+
+        foreach ($testCases as [$countryCode, $vatNumber, $shouldBeValid]) {
+            $scenario = [
+                'company_vat' => 'DE923356489',
+                'company_country' => 'DE',
+                'client_country' => $countryCode,
+                'client_vat' => $vatNumber,
+                'client_id_number' => '123456789',
+                'classification' => 'business',
+                'has_valid_vat' => true,
+                'over_threshold' => true,
+                'legal_entity_id' => 290868,
+                'is_tax_exempt' => false,
+            ];
+
+            $entity_data = $this->setupTestData($scenario);
+            $client = $entity_data['client'];
+            
+            // Ensure client has required address fields
+            $client->address1 = 'Test Address';
+            $client->city = 'Test City';
+            $client->postal_code = '12345';
+            $client->save();
+
+            $entityLevel = new EntityLevel();
+            $result = $entityLevel->checkClient($client);
+
+            $errorLabels = array_column($result['client'], 'label');
+            $errorFields = array_column($result['client'], 'field');
+            
+            $hasInvalidVatError = in_array('vat_number', $errorFields);
+
+            if ($shouldBeValid) {
+                $this->assertFalse($hasInvalidVatError,
+                    "VAT number '{$vatNumber}' for country '{$countryCode}' should be valid after stripping special characters");
+            } else {
+                $this->assertTrue($hasInvalidVatError,
+                    "VAT number '{$vatNumber}' for country '{$countryCode}' should be invalid");
+            }
+        }
     }
 
     public function testEntityValidationFailsForClientViaInvoice()
@@ -666,7 +1052,7 @@ class PeppolTest extends TestCase
 
             $p = new Peppol($invoice);
             nlog($p->run()->toXml());
-            nlog($invoice->withoutRelations()->toArray());
+            // nlog($invoice->withoutRelations()->toArray());
             nlog($response->json());
         }
 
@@ -681,14 +1067,13 @@ class PeppolTest extends TestCase
             'company_country' => 'DE',
             'client_country' => 'FR',
             'client_vat' => 'FRAA123456789',
-            'client_id_number' => '123456789',
+            'client_id_number' => '12345678901234',
             'classification' => 'government',
             'has_valid_vat' => true,
             'over_threshold' => true,
             'legal_entity_id' => 290868,
             'is_tax_exempt' => false,
         ];
-
 
         $entity_data = $this->setupTestData($scenario);
 
@@ -912,11 +1297,11 @@ class PeppolTest extends TestCase
 
             if (count($validator->getErrors()) > 0) {
                 nlog("index {$x}");
-                nlog($invoice->calc()->getTotalTaxes());
-                nlog($invoice->calc()->getTotal());
-                nlog($invoice->calc()->getSubtotal());
-                nlog($invoice->calc()->getTaxMap());
-                nlog($invoice->withoutRelations()->toArray());
+                // nlog($invoice->calc()->getTotalTaxes());
+                // nlog($invoice->calc()->getTotal());
+                // nlog($invoice->calc()->getSubtotal());
+                // nlog($invoice->calc()->getTaxMap());
+                // nlog($invoice->withoutRelations()->toArray());
                 nlog($p->toXml());
                 nlog($validator->getErrors());
             }
@@ -953,12 +1338,12 @@ class PeppolTest extends TestCase
             if (count($validator->getErrors()) > 0) {
                 nlog("De-De tax");
 
-                nlog("index {$x}");
-                nlog($invoice->calc()->getTotalTaxes());
-                nlog($invoice->calc()->getTotal());
-                nlog($invoice->calc()->getSubtotal());
-                nlog($invoice->calc()->getTaxMap());
-                nlog($invoice->withoutRelations()->toArray());
+                // nlog("index {$x}");
+                // nlog($invoice->calc()->getTotalTaxes());
+                // nlog($invoice->calc()->getTotal());
+                // nlog($invoice->calc()->getSubtotal());
+                // nlog($invoice->calc()->getTaxMap());
+                // nlog($invoice->withoutRelations()->toArray());
 
                 nlog($p->toXml());
                 nlog($validator->getErrors());
@@ -1078,11 +1463,11 @@ class PeppolTest extends TestCase
         $peppol->run();
 
 
-        nlog($peppol->toXml());
+        // nlog($peppol->toXml());
 
         // nlog($peppol->toObject());
 
-        $de_invoice = $peppol->getInvoice();
+        $de_invoice = $peppol->getDocument();
 
         $this->assertNotNull($de_invoice);
 
@@ -1227,7 +1612,7 @@ class PeppolTest extends TestCase
 
         // nlog($peppol->toObject());
 
-        $de_invoice = $peppol->getInvoice();
+        $de_invoice = $peppol->getDocument();
 
         $this->assertNotNull($de_invoice);
 
@@ -1357,7 +1742,7 @@ class PeppolTest extends TestCase
 
         // nlog($peppol->toObject());
 
-        $de_invoice = $peppol->getInvoice();
+        $de_invoice = $peppol->getDocument();
 
         $this->assertNotNull($de_invoice);
 
@@ -1491,7 +1876,7 @@ class PeppolTest extends TestCase
 
         // nlog($peppol->toXml());
 
-        $de_invoice = $peppol->getInvoice();
+        $de_invoice = $peppol->getDocument();
 
         $this->assertNotNull($de_invoice);
 
@@ -1646,7 +2031,7 @@ class PeppolTest extends TestCase
 
         // nlog($peppol->toXml());
 
-        $de_invoice = $peppol->getInvoice();
+        $de_invoice = $peppol->getDocument();
 
         $this->assertNotNull($de_invoice);
 
@@ -1799,7 +2184,7 @@ class PeppolTest extends TestCase
         $peppol->setInvoiceDefaults();
         $peppol->run();
 
-        $de_invoice = $peppol->getInvoice();
+        $de_invoice = $peppol->getDocument();
 
         $this->assertNotNull($de_invoice);
 
@@ -1950,7 +2335,7 @@ class PeppolTest extends TestCase
         $peppol->setInvoiceDefaults();
         $peppol->run();
 
-        $de_invoice = $peppol->getInvoice();
+        $de_invoice = $peppol->getDocument();
 
         $this->assertNotNull($de_invoice);
 
@@ -2094,7 +2479,7 @@ class PeppolTest extends TestCase
         $peppol->run();
 
 
-        $de_invoice = $peppol->getInvoice();
+        $de_invoice = $peppol->getDocument();
 
         $this->assertNotNull($de_invoice);
 
@@ -2219,7 +2604,7 @@ class PeppolTest extends TestCase
         $peppol->setInvoiceDefaults();
         $peppol->run();
 
-        $de_invoice = $peppol->getInvoice();
+        $de_invoice = $peppol->getDocument();
 
         $this->assertNotNull($de_invoice);
 
@@ -2318,7 +2703,7 @@ class PeppolTest extends TestCase
         $peppol = new Peppol($invoice);
         $peppol->run();
 
-        $fe = $peppol->getInvoice();
+        $fe = $peppol->getDocument();
 
         $this->assertNotNull($fe);
 
@@ -2344,6 +2729,182 @@ class PeppolTest extends TestCase
 
         $this->assertCount(0, $errors);
 
+    }
+
+    /**
+     * Standard scenario used for the blank-line tests below.
+     * DE→DE business with valid VAT — keeps test setup boilerplate to a
+     * minimum so each test can focus on what it's asserting.
+     */
+    private function blankItemScenario(): array
+    {
+        return [
+            'company_vat'      => 'DE923356489',
+            'company_country'  => 'DE',
+            'client_country'   => 'DE',
+            'client_vat'       => 'DE923256489',
+            'client_id_number' => '123456789',
+            'classification'   => 'business',
+            'has_valid_vat'    => true,
+            'over_threshold'   => true,
+            'legal_entity_id'  => 290868,
+            'is_tax_exempt'    => false,
+        ];
+    }
+
+    private function makeRealItem(string $key, float $cost = 100.0, float $qty = 1.0): InvoiceItem
+    {
+        $item = new InvoiceItem();
+        $item->product_key        = $key;
+        $item->cost               = $cost;
+        $item->quantity           = $qty;
+        $item->tax_name1          = 'VAT';
+        $item->tax_rate1          = 19;
+        $item->tax_id             = '1';
+        $item->is_amount_discount = false;
+        $item->discount           = 0;
+        return $item;
+    }
+
+    private function buildAndSave(array $line_items): Invoice
+    {
+        $entity_data = $this->setupTestData($this->blankItemScenario());
+
+        $invoice = $entity_data['invoice'];
+        $invoice->is_amount_discount   = false;
+        $invoice->discount             = 0;
+        $invoice->uses_inclusive_taxes = false;
+        $invoice->line_items           = $line_items;
+        $invoice = $invoice->calc()->getInvoice();
+
+        $repo = new InvoiceRepository();
+        $invoice = $repo->save([], $invoice);
+
+        $invoice->setRelation('company', $entity_data['company']);
+        $invoice->setRelation('client', $entity_data['client']);
+        $invoice->service()->markSent()->save();
+
+        return $invoice;
+    }
+
+    /**
+     * Integration: a fully-blank ghost row mixed with valid rows is
+     * dropped from the Peppol XML, surviving rows are renumbered
+     * contiguously, and the schematron passes cleanly.
+     */
+    public function testBlankRowDroppedFromPeppolXml(): void
+    {
+        $real1  = $this->makeRealItem('Widget A', 100, 2);
+        $blank  = new InvoiceItem(); // ghost row — all defaults
+        $real2  = $this->makeRealItem('Widget B', 50, 1);
+
+        $invoice = $this->buildAndSave([$real1, $blank, $real2]);
+
+        $peppol = new Peppol($invoice);
+        $peppol->run();
+        $xml = $peppol->toXml();
+
+        $this->assertEmpty($peppol->getErrors());
+
+        $dom = new \DOMDocument();
+        $dom->loadXML($xml);
+        $xpath = new \DOMXPath($dom);
+        $xpath->registerNamespace('cac', 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2');
+        $xpath->registerNamespace('cbc', 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2');
+
+        // Two surviving lines, not three.
+        $this->assertSame(2, $xpath->query('//cac:InvoiceLine')->length);
+
+        // IDs renumbered 1, 2 — no gap from the dropped middle row.
+        $ids = [];
+        foreach ($xpath->query('//cac:InvoiceLine/cbc:ID') as $node) {
+            $ids[] = $node->nodeValue;
+        }
+        $this->assertSame(['1', '2'], $ids);
+
+        // Surviving items keep their identity (Widget A and Widget B).
+        $names = [];
+        foreach ($xpath->query('//cac:InvoiceLine/cac:Item/cbc:Name') as $node) {
+            $names[] = $node->nodeValue;
+        }
+        $this->assertSame(['Widget A', 'Widget B'], $names);
+
+        // Schematron pipeline passes.
+        $validator = new XsltDocumentValidator($xml);
+        $validator->validate();
+        $this->assertCount(
+            0,
+            $validator->getErrors(),
+            'Schematron errors after dropping blank row: ' . json_encode($validator->getErrors())
+        );
+
+        // No errors pushed onto the Peppol service either.
+        $this->assertEmpty($peppol->getErrors());
+    }
+
+    /**
+     * Integration: an invoice consisting of only blank rows builds an XML
+     * with zero InvoiceLine elements. The schematron's existing "must have
+     * at least one line" rule (CEN-EN16931-UBL.xslt #957: `exists(cac:InvoiceLine)
+     * or exists(cac:CreditNoteLine)`) surfaces the failure naturally — the
+     * builder itself stays silent, consistent with the per-row drop policy.
+     */
+    public function testAllBlankInvoiceLeavesEmptyLinesForSchematronToCatch(): void
+    {
+        $invoice = $this->buildAndSave([new InvoiceItem(), new InvoiceItem()]);
+
+        $peppol = new Peppol($invoice);
+        $peppol->run();
+        $xml = $peppol->toXml();
+
+        $dom = new \DOMDocument();
+        $dom->loadXML($xml);
+        $xpath = new \DOMXPath($dom);
+        $xpath->registerNamespace('cac', 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2');
+
+        $this->assertSame(0, $xpath->query('//cac:InvoiceLine')->length);
+
+        // Schematron flags the empty-document case via its own rule.
+        $validator = new XsltDocumentValidator($xml);
+        $validator->validate();
+        $this->assertNotEmpty(
+            $validator->getErrors(),
+            'Schematron should reject an invoice with no InvoiceLine elements'
+        );
+    }
+
+    /**
+     * Integration: a billable row with a non-zero cost but missing
+     * tax_name1 must NOT be silently dropped — that would change the
+     * invoice total. The schematron should surface the real error.
+     */
+    public function testBillableRowMissingTaxNameIsKept(): void
+    {
+        $tagged = $this->makeRealItem('Widget A', 100, 1);
+
+        $untaxed = new InvoiceItem();
+        $untaxed->product_key = 'Untaxed';
+        $untaxed->cost        = 50;
+        $untaxed->quantity    = 1;
+        // deliberately no tax_name1 / tax_rate1
+
+        $invoice = $this->buildAndSave([$tagged, $untaxed]);
+
+        $peppol = new Peppol($invoice);
+        $peppol->run();
+        $xml = $peppol->toXml();
+
+        $dom = new \DOMDocument();
+        $dom->loadXML($xml);
+        $xpath = new \DOMXPath($dom);
+        $xpath->registerNamespace('cac', 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2');
+
+        // Both lines kept — predicate guarantees a non-zero cost row is never dropped.
+        $this->assertSame(
+            2,
+            $xpath->query('//cac:InvoiceLine')->length,
+            'Billable row missing tax_name1 must NOT be silently dropped'
+        );
     }
 
 }

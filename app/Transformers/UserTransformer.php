@@ -5,13 +5,15 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
 
 namespace App\Transformers;
 
+use App\DataMapper\Referral\ReferralMeta;
+use App\DataMapper\UserSettings;
 use App\Models\Company;
 use App\Models\CompanyToken;
 use App\Models\CompanyUser;
@@ -41,10 +43,12 @@ class UserTransformer extends EntityTransformer
 
     public function transform(User $user)
     {
-        $ref = new \stdClass();
-        $ref->free = 0;
-        $ref->pro = 0;
-        $ref->enterprise = 0;
+        $referralMeta = $user->referral_meta instanceof ReferralMeta
+            ? $user->referral_meta
+            : new ReferralMeta($user->referral_meta);
+        $settings = $user->settings instanceof UserSettings
+            ? $user->settings
+            : new UserSettings($user->settings);
 
         return [
             'id' => $this->encodePrimaryKey($user->id),
@@ -66,13 +70,16 @@ class UserTransformer extends EntityTransformer
             'oauth_provider_id' => (string) $user->oauth_provider_id,
             'last_confirmed_email_address' => (string) $user->last_confirmed_email_address ?: '',
             'google_2fa_secret' => (bool) $user->google_2fa_secret,
+            'passkey_enabled' => $user->passkey_credentials->isNotEmpty(),
+            'passkey_count' => $user->passkey_credentials->count(),
             'has_password' => (bool) empty($user->password) ? false : true,
             'oauth_user_token' => empty($user->oauth_user_token) ? '' : '***',
             'verified_phone_number' => (bool) $user->verified_phone_number,
             'language_id' => (string) $user->language_id ?: '',
             'user_logged_in_notification' => (bool) $user->user_logged_in_notification,
             'referral_code' => (string) $user->referral_code,
-            'referral_meta' => $user->referral_meta ? (object)$user->referral_meta : $ref,
+            'referral_meta' => (object) $referralMeta->toArray(),
+            'settings' => $settings->toResponseObject(),
         ];
     }
 

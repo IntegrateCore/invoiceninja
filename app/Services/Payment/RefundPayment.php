@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -17,10 +17,12 @@ use App\Utils\Ninja;
 use App\Models\Credit;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\Paymentable;
 use App\Models\Activity;
 use App\Exceptions\PaymentRefundFailed;
 use App\Jobs\Payment\EmailRefundPayment;
 use App\Repositories\ActivityRepository;
+use App\Services\EDocument\Standards\France\FrancePaymentApplicationRecorder;
 use App\Listeners\Payment\PaymentTransactionEventEntry;
 
 class RefundPayment
@@ -33,9 +35,7 @@ class RefundPayment
 
     private string $refund_failed_message = '';
 
-    public function __construct(public Payment $payment, public array $refund_data)
-    {
-    }
+    public function __construct(public Payment $payment, public array $refund_data) {}
 
     public function run()
     {
@@ -134,7 +134,10 @@ class RefundPayment
                     $this->refund_failed = true;
                     $this->refund_failed_message = $response['description'] ?? '';
                 }
+            } else {
+                $this->payment->refunded += $net_refund;
             }
+            
         } else {
             $this->payment->refunded += $net_refund;
         }
@@ -196,7 +199,7 @@ class RefundPayment
      */
     private function setStatus()
     {
-        if ($this->total_refund == $this->payment->amount || floatval($this->payment->amount) == floatval($this->payment->refunded)) {
+        if ($this->total_refund == $this->payment->amount || \App\Utils\BcMath::equal($this->payment->amount, $this->payment->refunded)) {
             $this->payment->status_id = Payment::STATUS_REFUNDED;
         } else {
             $this->payment->status_id = Payment::STATUS_PARTIALLY_REFUNDED;
@@ -253,6 +256,15 @@ class RefundPayment
                                        ->updatePaidToDate($amount_to_refund * -1)
                                        ->save();
 
+                    // Restore the client's credit_balance when credit is refunded
+                    // This prevents the double-spend bug where credit.balance is restored
+                    // but client.credit_balance is not, causing negative balance on re-application
+                    if (!$paymentable_credit->is_deleted) {
+                        $this->payment->client->fresh()
+                            ->service()
+                            ->adjustCreditBalance($amount_to_refund)
+                            ->save();
+                    }
 
                     $this->credits_used += $amount_to_refund;
                     $amount_to_refund = 0;
@@ -266,6 +278,16 @@ class RefundPayment
                                        ->adjustBalance($available_credit)
                                        ->updatePaidToDate($available_credit * -1)
                                        ->save();
+
+                    // Restore the client's credit_balance when credit is refunded
+                    // This prevents the double-spend bug where credit.balance is restored
+                    // but client.credit_balance is not, causing negative balance on re-application
+                    if (!$paymentable_credit->is_deleted) {
+                        $this->payment->client->fresh()
+                            ->service()
+                            ->adjustCreditBalance($available_credit)
+                            ->save();
+                    }
 
                     $this->credits_used += $available_credit;
                     $amount_to_refund -= $available_credit;
@@ -331,6 +353,30 @@ class RefundPayment
                                   ->service()
                                   ->updateBalanceAndPaidToDate($refunded_invoice['amount'], -1 * $refunded_invoice['amount'])
                                   ->save();
+
+                try {
+                    $invoice->loadMissing(['client.country', 'client.company']);
+
+                    if ($invoice->client->reportableFrTransaction()) {
+                        $paymentable = Paymentable::withTrashed()
+                            ->where('payment_id', $this->payment->id)
+                            ->where('paymentable_id', $invoice->id)
+                            ->where('paymentable_type', 'invoices')
+                            ->latest('id')
+                            ->first();
+
+                        app(FrancePaymentApplicationRecorder::class)->recordMovement(
+                            payment: $this->payment,
+                            invoice: $invoice,
+                            paymentable: $paymentable,
+                            movementAmount: -1 * $refunded_invoice['amount'],
+                            movementDate: $this->refund_data['date'] ?? now()->toDateString(),
+                            movementType: FrancePaymentApplicationRecorder::MOVEMENT_REFUNDED,
+                        );
+                    }
+                } catch (\Throwable $exception) {
+                    report($exception);
+                }
 
                 if ($invoice->is_deleted) {
                     $invoice->delete();

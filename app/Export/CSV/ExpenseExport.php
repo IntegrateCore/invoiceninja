@@ -51,7 +51,7 @@ class ExpenseExport extends BaseExport
             return ['identifier' => $key, 'display_value' => $headerdisplay[$value]];
         })->toArray();
 
-        $report = $query->cursor()
+        $report = $this->streamQuery($query)
                 ->map(function ($resource) {
 
                     /** @var \App\Models\Expense $resource */
@@ -77,7 +77,7 @@ class ExpenseExport extends BaseExport
 
         $tax_keys = [
             'expense.tax_amount',
-            'expense.net_amount'
+            'expense.net_amount',
         ];
 
         $this->input['report_keys'] = array_unique(array_merge($this->input['report_keys'], $tax_keys));
@@ -135,7 +135,7 @@ class ExpenseExport extends BaseExport
         //insert the header
         $this->csv->insertOne($this->buildHeader());
 
-        $query->cursor()
+        $this->streamQuery($query)
                 ->each(function ($expense) {
 
                     /** @var \App\Models\Expense $expense */
@@ -145,7 +145,7 @@ class ExpenseExport extends BaseExport
         return $this->csv->toString();
     }
 
-    private function buildRow(Expense $expense): array
+    protected function buildRow(Expense $expense): array
     {
         $transformed_expense = $this->expense_transformer->transform($expense);
         $transformed_expense['currency_id'] =  $expense->currency ? $expense->currency->code : $expense->company->currency()->code;
@@ -220,7 +220,7 @@ class ExpenseExport extends BaseExport
 
     private function decorateAdvancedFields(Expense $expense, array $entity): array
     {
-        
+
         if (in_array('expense.invoice_id', $this->input['report_keys'])) {
             $entity['expense.invoice_id'] = $expense->invoice ? $expense->invoice->number : '';
         }
@@ -276,7 +276,11 @@ class ExpenseExport extends BaseExport
                 $total_tax_amount = ($this->calcInclusiveLineTax($expense->tax_rate1 ?? 0, $expense->amount, $precision)) + ($this->calcInclusiveLineTax($expense->tax_rate2 ?? 0, $expense->amount, $precision)) + ($this->calcInclusiveLineTax($expense->tax_rate3 ?? 0, $expense->amount, $precision));
                 $entity['expense.net_amount'] = round(($expense->amount - round($total_tax_amount, $precision)), $precision);
             } else {
-                $total_tax_amount = ($expense->amount * (($expense->tax_rate1 ?? 0) / 100)) + ($expense->amount * (($expense->tax_rate2 ?? 0) / 100)) + ($expense->amount * (($expense->tax_rate3 ?? 0) / 100));
+                $tax_amount1 = $expense->amount * (($expense->tax_rate1 ?? 0) / 100);
+                $tax_amount2 = $expense->amount * (($expense->tax_rate2 ?? 0) / 100);
+                $tax_amount3 = $expense->amount * (($expense->tax_rate3 ?? 0) / 100);
+
+                $total_tax_amount = round($tax_amount1, $precision) + round($tax_amount2, $precision) + round($tax_amount3, $precision);
                 $entity['expense.net_amount'] = round($expense->amount, $precision);
                 $entity['expense.amount'] = round($expense->amount, $precision) + $total_tax_amount;
             }

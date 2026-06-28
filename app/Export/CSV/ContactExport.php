@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -83,7 +83,7 @@ class ContactExport extends BaseExport
         //insert the header
         $this->csv->insertOne($this->buildHeader());
 
-        $query->cursor()->each(function ($contact) {
+        $this->streamQuery($query)->each(function ($contact) {
             /** @var \App\Models\ClientContact $contact */
             $this->csv->insertOne($this->buildRow($contact));
         });
@@ -102,7 +102,7 @@ class ContactExport extends BaseExport
             return ['identifier' => $key, 'display_value' => $headerdisplay[$value]];
         })->toArray();
 
-        $report = $query->cursor()
+        $report = $this->streamQuery($query)
                 ->map(function ($contact) {
                     /** @var \App\Models\ClientContact $contact */
                     $row = $this->buildRow($contact);
@@ -113,7 +113,7 @@ class ContactExport extends BaseExport
     }
 
 
-    private function buildRow(ClientContact $contact): array
+    protected function buildRow(ClientContact $contact): array
     {
         $transformed_contact = false;
 
@@ -136,7 +136,7 @@ class ContactExport extends BaseExport
 
             }
         }
-        
+
         return $this->decorateAdvancedFields($contact->client, $entity);
     }
 

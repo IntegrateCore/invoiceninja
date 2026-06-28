@@ -5,7 +5,7 @@
  *
  * @link https://github.com/invoiceninja/invoiceninja source repository
  *
- * @copyright Copyright (c) 2025. Invoice Ninja LLC (https://invoiceninja.com)
+ * @copyright Copyright (c) 2026. Invoice Ninja LLC (https://invoiceninja.com)
  *
  * @license https://www.elastic.co/licensing/elastic-license
  */
@@ -430,7 +430,7 @@ class TaxRateController extends BaseController
         $action = request()->input('action');
         $ids = request()->input('ids');
 
-        $tax_rates = TaxRate::withTrashed()->find($this->transformKeys($ids));
+        $tax_rates = TaxRate::withTrashed()->company()->find($this->transformKeys($ids));
 
         $tax_rates->each(function ($tax_rate, $key) use ($action, $user) {
             if ($user->can('edit', $tax_rate)) {
@@ -454,6 +454,6 @@ class TaxRateController extends BaseController
             }
         });
 
-        return $this->listResponse(TaxRate::withTrashed()->whereIn('id', $this->transformKeys($ids)));
+        return $this->listResponse(TaxRate::withTrashed()->company()->whereIn('id', $this->transformKeys($ids)));
     }
 }
