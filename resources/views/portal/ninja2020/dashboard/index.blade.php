@@ -71,6 +71,22 @@
         </div>
     </div>
 
+    <div class="flex flex-row items-center rounded-md border border-[#E5E7EB] bg-white p-5 md:flex-col md:justify-center w-full mt-4">
+        <div class="bg-blue-light mr-3 flex h-12 w-12 items-center justify-center rounded md:mb-6 md:mr-0">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22" fill="none">
+                <path d="M11 2C6.03 2 2 6.03 2 11s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9Zm0 16.5A7.5 7.5 0 1 1 11 3.5a7.5 7.5 0 0 1 0 15Zm.75-11h-1.5v5.25l4.5 2.7.75-1.23-3.75-2.22V7.5Z" fill="{{ $settings->primary_color }}" />
+            </svg>
+        </div>
+        <div class="md:text-center">
+            <p class="text-light-grey-text mb-2 text-xs md:text-sm">
+                {{ ctrans('texts.time_left') }}
+            </p>
+            <p class="text-2xl font-semibold text-[#212529] md:text-[32px]">
+                {{ App\Utils\Number::formatValueNoTrailingZeroes($client->consulting_hours_balance ?? 0, $client) }} {{ ctrans('texts.hours') }}
+            </p>
+        </div>
+    </div>
+
     <div class="flex flex-wrap items-stretch rounded-md border border-[#E5E7EB] bg-white p-4 md:gap-y-6 xl:flex-nowrap mt-4">
         <div class="flex basis-1/2 items-center xl:basis-auto xl:border-r xl:border-[#E5E7EB] xl:pr-20">
             <p class="text-base font-semibold text-[#212529]">{{ ctrans('texts.invoice_from') }}</p>

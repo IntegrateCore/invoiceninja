@@ -31,6 +31,7 @@ class DashboardController extends Controller
 
         return $this->render('dashboard.index', [
             'total_invoices' => $total_invoices,
+            'consulting_hours_balance' => auth()->guard('contact')->user()->client->consulting_hours_balance ?? 0,
         ]);
     }
 }

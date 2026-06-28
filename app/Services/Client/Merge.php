@@ -35,13 +35,16 @@ class Merge extends AbstractService
         nlog("merging {$this->mergable_client->id} into {$this->client->id}");
         nlog("balance pre {$this->client->balance}");
         nlog("paid_to_date pre {$this->client->paid_to_date}");
+        nlog("consulting_hours_balance pre {$this->client->consulting_hours_balance}");
 
         $mergeable_client = $this->mergable_client->present()->name();
 
         $this->client->service()->updateBalanceAndPaidToDate($this->mergable_client->balance, $this->mergable_client->paid_to_date);
-        
+        $this->client->service()->updateConsultingHoursBalance((float) $this->mergable_client->consulting_hours_balance);
+
         nlog("balance post {$this->client->balance}");
         nlog("paid_to_date post {$this->client->paid_to_date}");
+        nlog("consulting_hours_balance post {$this->client->consulting_hours_balance}");
 
         $event_vars = \App\Utils\Ninja::eventVars(auth()->user() ? auth()->user()->id : null);
         $event_vars['client_hash'] = $this->mergable_client->client_hash;

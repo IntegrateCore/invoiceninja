@@ -172,6 +172,7 @@ use App\Events\Company\CompanyDocumentsDeleted;
 use App\Listeners\Activity\CreatedTaskActivity;
 use App\Listeners\Activity\TaskDeletedActivity;
 use App\Listeners\Activity\TaskUpdatedActivity;
+use App\Listeners\Invoice\ConsultingHoursBalanceActivity;
 use App\Listeners\Invoice\InvoiceEmailActivity;
 use App\Listeners\SendVerificationNotification;
 use App\Events\Credit\CreditWasEmailedAndFailed;
@@ -496,6 +497,7 @@ class EventServiceProvider extends ServiceProvider
         ],
         InvoiceWasPaid::class => [
             InvoicePaidActivity::class,
+            ConsultingHoursBalanceActivity::class,
         ],
         InvoiceWasViewed::class => [
             InvoiceViewedActivity::class,

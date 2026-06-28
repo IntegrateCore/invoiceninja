@@ -113,7 +113,7 @@ class ClientObserver
         // 3. Only financial fields changed (not balance fields which are auto-calculated)
         if ($client->company->shouldPushToQuickbooks('client')
            && empty(\App\Services\Quickbooks\QuickbooksService::$importing[$client->company_id])
-           && !$client->isDirty(['paid_to_date','balance','credit_balance','payment_balance'])) {
+           && !$client->isDirty(['paid_to_date','balance','credit_balance','consulting_hours_balance','payment_balance'])) {
             QuickbooksBatchCollector::collect(
                 'client',
                 $client->id,

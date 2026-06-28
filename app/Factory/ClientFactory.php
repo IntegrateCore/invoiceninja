@@ -29,6 +29,7 @@ class ClientFactory
         $client->public_notes = '';
         $client->balance = 0;
         $client->paid_to_date = 0;
+        $client->consulting_hours_balance = 0;
         $client->country_id = null;
         $client->is_deleted = false;
         $client->client_hash = Str::random(40);

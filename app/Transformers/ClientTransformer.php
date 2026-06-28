@@ -159,6 +159,7 @@ class ClientTransformer extends EntityTransformer
             'custom_value2' => $client->custom_value2 ?: '',
             'custom_value3' => $client->custom_value3 ?: '',
             'custom_value4' => $client->custom_value4 ?: '',
+            'consulting_hours_balance' => (float) $client->consulting_hours_balance,
             'shipping_address1' => $client->shipping_address1 ?: '',
             'shipping_address2' => $client->shipping_address2 ?: '',
             'shipping_city' => $client->shipping_city ?: '',

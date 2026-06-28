@@ -53,6 +53,7 @@ use Illuminate\Contracts\Translation\HasLocalePreference;
  * @property float $balance
  * @property float $paid_to_date
  * @property float $credit_balance
+ * @property float $consulting_hours_balance
  * @property int|null $last_login
  * @property int|null $industry_id
  * @property int|null $size_id
@@ -191,6 +192,7 @@ class Client extends BaseModel implements HasLocalePreference
         'is_tax_exempt',
         'has_valid_vat_number',
         'classification',
+        'consulting_hours_balance',
     ];
 
     protected $with = [
