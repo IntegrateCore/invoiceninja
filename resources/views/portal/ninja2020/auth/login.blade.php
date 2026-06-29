@@ -28,14 +28,6 @@
 
         <div class="col-span-3 lg:col-span-2 h-screen flex">
             <div class="m-auto md:w-1/2 lg:w-1/4">
-                <div>
-                    @include('partials.brand-mark', [
-                        'class' => 'border-b border-gray-100 pb-4 flex items-center gap-3 justify-center',
-                        'imageClass' => 'h-12 w-12',
-                        'imageId' => 'company_logo'
-                    ])
-                </div>
-
                 <div class="flex flex-col">
                     <h1 class="text-center text-3xl">{{ ctrans('texts.client_portal') }}</h1>
                     <form action="{{ route('client.login') }}" method="post" class="mt-6">
