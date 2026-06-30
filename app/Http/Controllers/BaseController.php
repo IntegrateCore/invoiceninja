@@ -1281,6 +1281,12 @@ class BaseController extends Controller
 
             $data['path'] = $this->setBuild();
 
+            $portal_host = parse_url(config('ninja.ninja_client_portal'), PHP_URL_HOST);
+
+            if ($portal_host && request()->getHost() === $portal_host) {
+                return redirect()->route('client.login');
+            }
+
             if (request()->getHost() === 'admin.integratecore.net') {
                 return response()->view('react.index', $data)->header('X-Frame-Options', 'SAMEORIGIN', false);
             }
