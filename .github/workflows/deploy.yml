@@ -46,4 +46,5 @@ jobs:
 
       - name: Deploy
         run: |
+          docker pull ghcr.io/integratecore/invoiceninja:latest
           docker save ghcr.io/integratecore/invoiceninja:latest | gzip -1 | ssh -p "${{ secrets.DEPLOY_SSH_PORT }}" "${{ secrets.DEPLOY_SSH_USER }}@${{ secrets.DEPLOY_SSH_HOST }}" 'gunzip | docker load && cd /srv/invoiceninja && docker compose up -d && docker image prune -f'
