@@ -18,7 +18,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: v5-develop
           fetch-depth: 1
 
       - name: Install composer dependencies
