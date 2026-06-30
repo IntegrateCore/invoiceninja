@@ -1,0 +1,1 @@
+import{ff as s}from"./index-C1qQ3sb4.js";import{a as n}from"./react-redux-C3LUt7dB.js";function r(){const t=n();return(e,a)=>{t(s({object:"company",property:`settings.${e}`,value:a}))}}export{r as u};

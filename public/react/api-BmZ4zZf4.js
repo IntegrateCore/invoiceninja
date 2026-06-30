@@ -1,0 +1,1 @@
+var p=(d=>(d[d.Draft=1]="Draft",d[d.PendingApproval=2]="PendingApproval",d[d.Approved=3]="Approved",d[d.Rejected=4]="Rejected",d[d.Sent=5]="Sent",d[d.Completed=6]="Completed",d[d.Expired=7]="Expired",d[d.Voided=8]="Voided",d))(p||{});export{p as D};

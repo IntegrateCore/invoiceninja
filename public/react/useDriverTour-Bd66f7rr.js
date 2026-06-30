@@ -1,0 +1,1 @@
+import{A as s}from"./driver.js-SHUPvkLk.js";import{a as u}from"./react-CpWiBZqO.js";function c({steps:i,eventName:r,options:o,delay:n,show:t}){u.useEffect(()=>{if(t===!1)return;const e=()=>{setTimeout(()=>{s({...o,steps:i}).drive()},n??0)};if(!r){e();return}return window.addEventListener(r,e),()=>{window.removeEventListener(r,e)}},[t])}export{c as u};

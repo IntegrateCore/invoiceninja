@@ -1,0 +1,1 @@
+import{g as x}from"./react-CpWiBZqO.js";var r,o;function a(){return o||(o=1,r=function(e){return e=e&&typeof e=="object"?e:{},e.strict?/^#([a-f0-9]{3,4}|[a-f0-9]{4}(?:[a-f0-9]{2}){1,2})\b$/i:/#([a-f0-9]{3}|[a-f0-9]{4}(?:[a-f0-9]{2}){0,2})\b/gi}),r}var f=a();const i=x(f);export{i as h};

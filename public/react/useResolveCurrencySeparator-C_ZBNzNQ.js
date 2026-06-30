@@ -1,0 +1,1 @@
+import{bf as a}from"./index-lNgt1Igp.js";function s(){const e=a();return o=>{const r=e(o);return r?{decimalSeparator:r.decimal_separator,precision:r.precision,thousandSeparator:r.thousand_separator}:null}}export{s as u};

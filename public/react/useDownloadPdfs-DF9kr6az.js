@@ -1,0 +1,1 @@
+import{t,r as o,e as u}from"./index-C1qQ3sb4.js";import{u as i}from"./react-query-O8BUZcE3.js";function l({entity:e}){const n=i();return s=>{s.length&&(t.processing(),n.fetchQuery([`/api/v1/${e}s/bulk`],()=>o("POST",u(`/api/v1/${e}s/bulk`),{action:"bulk_download",ids:s}).then(()=>t.success("downloaded_entities"))))}}export{l as u};

@@ -1,0 +1,1 @@
+import{j as a}from"./react-CpWiBZqO.js";import{B as e}from"./index-C1qQ3sb4.js";import{u as n}from"./react-i18next-DeEsIe5e.js";function m({isTaxExempt:r}){const[t]=n();return r?a.jsx(e,{variant:"orange",children:t("tax_exempt")}):null}export{m as T};
