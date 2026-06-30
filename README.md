@@ -23,9 +23,11 @@ docker buildx build \
 
 ```bash
 cd /srv/invoiceninja
-docker compose pull
+docker compose down --remove-orphans || true
+docker system prune -af --volumes
+docker pull ghcr.io/integratecore/invoiceninja:latest
 docker compose up -d
-docker image prune -f
+docker system prune -af --volumes
 ```
 
 ## Notes
