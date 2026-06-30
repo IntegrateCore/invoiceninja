@@ -66,6 +66,7 @@ COPY preload.php /var/www/html/preload.php
 
 RUN chmod +x /usr/local/bin/entrypoint.sh \
     && mkdir -p /var/www/.config /var/www/html/storage /var/www/html/bootstrap/cache \
+    && rm -f /etc/nginx/sites-enabled/default \
     && chown -R www-data:www-data /var/www \
     && sed -i 's/^listen = 9000/listen = 127.0.0.1:9000/' /usr/local/etc/php-fpm.d/zz-invoiceninja.conf
 
