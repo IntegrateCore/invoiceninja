@@ -33,7 +33,6 @@ RUN install-php-extensions \
         curl \
         exif \
         gd \
-        imagick \
         intl \
         mbstring \
         opcache \
@@ -41,6 +40,18 @@ RUN install-php-extensions \
         pdo_mysql \
         soap \
         zip
+
+# Imagick can fail intermittently while downloading/unpacking PECL archives.
+RUN set -eux; \
+    for attempt in 1 2 3; do \
+        if install-php-extensions imagick; then \
+            break; \
+        fi; \
+        if [ "$attempt" -eq 3 ]; then \
+            exit 1; \
+        fi; \
+        sleep "$((attempt * 5))"; \
+    done
 
 RUN if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
         mkdir -p /etc/apt/keyrings && \
