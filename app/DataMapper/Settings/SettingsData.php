@@ -30,7 +30,7 @@ class SettingsData
 
     public bool $enable_client_portal = true; //@implemented
 
-    public bool $enable_client_portal_dashboard = false; // @TODO There currently is no dashboard, so this is pending
+    public bool $enable_client_portal_dashboard = true; // portal dashboard is available again
 
     public bool $signature_on_pdf = false; //@implemented
 

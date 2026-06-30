@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <title>IntegrateCore</title>
+
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta
+      name="description"
+      content="IntegrateCore client portal and admin workspace for invoices, projects, tasks, and consulting hours."
+    />
+
+    <script>
+      if (
+        window.matchMedia &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches
+      ) {
+        document.documentElement.style.backgroundColor = '#18181b';
+      }
+    </script>
+
+    <link rel="stylesheet" href="/rsms/inter.css" />
+
+    <link rel="icon" href="/favicon.ico?v=integratecore" />
+    <link rel="apple-touch-icon" href="/logo180.png?v=integratecore" />
+    <link rel="manifest" href="/manifest.json?v=integratecore" />
+    <script type="module" crossorigin src="/react/index-JRKdQTCn.js"></script>
+    <link rel="modulepreload" crossorigin href="/react/react-CpWiBZqO.js">
+    <link rel="modulepreload" crossorigin href="/react/scheduler-CWG1rEj-.js">
+    <link rel="modulepreload" crossorigin href="/react/react-dom-BEyDIiW1.js">
+    <link rel="modulepreload" crossorigin href="/react/react-is-DywX51Id.js">
+    <link rel="modulepreload" crossorigin href="/react/hoist-non-react-statics-Nf_yBmiY.js">
+    <link rel="modulepreload" crossorigin href="/react/use-sync-external-store-arvGT2RQ.js">
+    <link rel="modulepreload" crossorigin href="/react/@babel-C0fb6_ri.js">
+    <link rel="modulepreload" crossorigin href="/react/react-redux-C3LUt7dB.js">
+    <link rel="modulepreload" crossorigin href="/react/lodash-CRH7lxrr.js">
+    <link rel="modulepreload" crossorigin href="/react/immer-CbrY2-1y.js">
+    <link rel="modulepreload" crossorigin href="/react/redux-efqWnxBQ.js">
+    <link rel="modulepreload" crossorigin href="/react/reselect-Bw917xNi.js">
+    <link rel="modulepreload" crossorigin href="/react/redux-thunk-CY0Q9z1Q.js">
+    <link rel="modulepreload" crossorigin href="/react/@reduxjs-CWF2tNV-.js">
+    <link rel="modulepreload" crossorigin href="/react/dayjs-EKlV5PmR.js">
+    <link rel="modulepreload" crossorigin href="/react/i18next-5kbm4m7b.js">
+    <link rel="modulepreload" crossorigin href="/react/axios-DHr9lByg.js">
+    <link rel="modulepreload" crossorigin href="/react/pusher-js-WZD3sDel.js">
+    <link rel="modulepreload" crossorigin href="/react/jotai-CxzHT2-Z.js">
+    <link rel="modulepreload" crossorigin href="/react/react-query-O8BUZcE3.js">
+    <link rel="modulepreload" crossorigin href="/react/react-icons-CHUaJ83D.js">
+    <link rel="modulepreload" crossorigin href="/react/goober-np-fLvOt.js">
+    <link rel="modulepreload" crossorigin href="/react/react-hot-toast-jwHMfsO3.js">
+    <link rel="modulepreload" crossorigin href="/react/@azure-BRf7SiVb.js">
+    <link rel="modulepreload" crossorigin href="/react/@remix-run-CceTODV7.js">
+    <link rel="modulepreload" crossorigin href="/react/react-router-Ds0wC0SW.js">
+    <link rel="modulepreload" crossorigin href="/react/classnames-4xOy2hMo.js">
+    <link rel="modulepreload" crossorigin href="/react/react-router-dom-DyvgnzIc.js">
+    <link rel="modulepreload" crossorigin href="/react/tslib-CGNu0TuM.js">
+    <link rel="modulepreload" crossorigin href="/react/stylis-YG1R7XFf.js">
+    <link rel="modulepreload" crossorigin href="/react/@emotion-BDlnZ5pf.js">
+    <link rel="modulepreload" crossorigin href="/react/styled-components-CSMnKSAd.js">
+    <link rel="modulepreload" crossorigin href="/react/react-datepicker-CrID-HIy.js">
+    <link rel="modulepreload" crossorigin href="/react/lodash.debounce-BWMggGhL.js">
+    <link rel="modulepreload" crossorigin href="/react/react-debounce-input-C5VZKWKk.js">
+    <link rel="modulepreload" crossorigin href="/react/@tanstack-BYU9C84u.js">
+    <link rel="modulepreload" crossorigin href="/react/@headlessui-BUtnS7A7.js">
+    <link rel="modulepreload" crossorigin href="/react/react-i18next-DeEsIe5e.js">
+    <link rel="modulepreload" crossorigin href="/react/@popperjs-B_2vCoY7.js">
+    <link rel="modulepreload" crossorigin href="/react/tippy.js-Dfgp_9Xz.js">
+    <link rel="modulepreload" crossorigin href="/react/@tippyjs-DxXU2Ksf.js">
+    <link rel="modulepreload" crossorigin href="/react/deepmerge-DhIoniG1.js">
+    <link rel="modulepreload" crossorigin href="/react/lodash-es-DmYiOdOc.js">
+    <link rel="modulepreload" crossorigin href="/react/react-fast-compare-dtO7MrAz.js">
+    <link rel="modulepreload" crossorigin href="/react/formik-e5SfD36C.js">
+    <link rel="modulepreload" crossorigin href="/react/prop-types-Bv0UlWLL.js">
+    <link rel="modulepreload" crossorigin href="/react/react-feather-CHeujNZ3.js">
+    <link rel="modulepreload" crossorigin href="/react/@floating-ui-C04-0--f.js">
+    <link rel="modulepreload" crossorigin href="/react/use-isomorphic-layout-effect-DUuJmPjQ.js">
+    <link rel="modulepreload" crossorigin href="/react/memoize-one-BdPwpGay.js">
+    <link rel="modulepreload" crossorigin href="/react/react-select-Bqe_y5y3.js">
+    <link rel="modulepreload" crossorigin href="/react/react-use-D0gqhr8O.js">
+    <link rel="modulepreload" crossorigin href="/react/hex-color-regex-Qr0fw5BB.js">
+    <link rel="modulepreload" crossorigin href="/react/collect.js-Bd-RtuJt.js">
+    <link rel="modulepreload" crossorigin href="/react/react-phone-number-input-D8D2I4Xl.js">
+    <link rel="modulepreload" crossorigin href="/react/react-verification-input-DfVLHhyq.js">
+    <link rel="modulepreload" crossorigin href="/react/uuid-Dnyct6Ft.js">
+    <link rel="modulepreload" crossorigin href="/react/react-string-replace-Ddw10r7T.js">
+    <link rel="modulepreload" crossorigin href="/react/@react-oauth-Dt-xd0pT.js">
+    <link rel="modulepreload" crossorigin href="/react/react-apple-signin-auth-oBzikKRH.js">
+    <link rel="modulepreload" crossorigin href="/react/@tinymce-DftJaTvV.js">
+    <link rel="modulepreload" crossorigin href="/react/orderedmap-C4TimWWB.js">
+    <link rel="modulepreload" crossorigin href="/react/prosemirror-model-DXysGvVm.js">
+    <link rel="modulepreload" crossorigin href="/react/prosemirror-transform-A48O5E6v.js">
+    <link rel="modulepreload" crossorigin href="/react/prosemirror-state-cpKeCQzA.js">
+    <link rel="modulepreload" crossorigin href="/react/prosemirror-view-DRCB6JYx.js">
+    <link rel="modulepreload" crossorigin href="/react/w3c-keyname-DEtA-KhA.js">
+    <link rel="modulepreload" crossorigin href="/react/prosemirror-keymap-Bkrz4fOg.js">
+    <link rel="modulepreload" crossorigin href="/react/prosemirror-tables-CXEFITIK.js">
+    <link rel="modulepreload" crossorigin href="/react/fast-equals-C7yKKq-w.js">
+    <link rel="modulepreload" crossorigin href="/react/prosemirror-commands-Dr9o82Xz.js">
+    <link rel="modulepreload" crossorigin href="/react/prosemirror-schema-list-BDhWARu-.js">
+    <link rel="modulepreload" crossorigin href="/react/linkifyjs-DVrXeg1a.js">
+    <link rel="modulepreload" crossorigin href="/react/prosemirror-dropcursor-D9OX-fUx.js">
+    <link rel="modulepreload" crossorigin href="/react/prosemirror-gapcursor-DmnskxGc.js">
+    <link rel="modulepreload" crossorigin href="/react/rope-sequence-nfUW61tr.js">
+    <link rel="modulepreload" crossorigin href="/react/prosemirror-history-BUSiuoz2.js">
+    <link rel="modulepreload" crossorigin href="/react/@tiptap-yPuZiwgs.js">
+    <link rel="modulepreload" crossorigin href="/react/qr.js-D7uXRtkb.js">
+    <link rel="modulepreload" crossorigin href="/react/react-qr-code-D6FVFbKP.js">
+    <link rel="modulepreload" crossorigin href="/react/currency.js-BSkspdt3.js">
+    <link rel="modulepreload" crossorigin href="/react/rc-util-DLmIk_zV.js">
+    <link rel="modulepreload" crossorigin href="/react/resize-observer-polyfill-D6qJbdzf.js">
+    <link rel="modulepreload" crossorigin href="/react/@ant-design-G7Jtct8N.js">
+    <link rel="modulepreload" crossorigin href="/react/rc-resize-observer-Dpdhh38n.js">
+    <link rel="modulepreload" crossorigin href="/react/rc-motion-DLMIXsFY.js">
+    <link rel="modulepreload" crossorigin href="/react/@rc-component-0LxB_FNY.js">
+    <link rel="modulepreload" crossorigin href="/react/rc-overflow-DnK-oKMJ.js">
+    <link rel="modulepreload" crossorigin href="/react/rc-tooltip-DMJQxWfS.js">
+    <link rel="modulepreload" crossorigin href="/react/rc-picker-B10b0b8A.js">
+    <link rel="modulepreload" crossorigin href="/react/rc-pagination-i2maYKE1.js">
+    <link rel="modulepreload" crossorigin href="/react/rc-field-form-CsqwnNxl.js">
+    <link rel="modulepreload" crossorigin href="/react/antd-DPaHvMKc.js">
+    <link rel="modulepreload" crossorigin href="/react/file-selector-D_cf3V2N.js">
+    <link rel="modulepreload" crossorigin href="/react/attr-accept-BpemuQxc.js">
+    <link rel="modulepreload" crossorigin href="/react/react-dropzone-Bpnt_6WO.js">
+    <link rel="modulepreload" crossorigin href="/react/react-colorful-CCDAjkOs.js">
+    <link rel="modulepreload" crossorigin href="/react/react-number-format-CPIO_jKi.js">
+    <link rel="modulepreload" crossorigin href="/react/dompurify-BElT3piG.js">
+    <link rel="modulepreload" crossorigin href="/react/use-memo-one-DMVlm1R1.js">
+    <link rel="modulepreload" crossorigin href="/react/tiny-invariant-BaFNuDhB.js">
+    <link rel="modulepreload" crossorigin href="/react/css-box-model-SSI6wf-B.js">
+    <link rel="modulepreload" crossorigin href="/react/raf-schd-CmoV45_-.js">
+    <link rel="modulepreload" crossorigin href="/react/@hello-pangea-BKn81Uwf.js">
+    <link rel="modulepreload" crossorigin href="/react/array-move-YW9JZPqe.js">
+    <link rel="modulepreload" crossorigin href="/react/js-sha256-BPsU6vQd.js">
+    <link rel="modulepreload" crossorigin href="/react/react-image-crop-KXApAmwt.js">
+    <link rel="modulepreload" crossorigin href="/react/devlop-Cl3hj7Sz.js">
+    <link rel="modulepreload" crossorigin href="/react/bail-FqpXQuLt.js">
+    <link rel="modulepreload" crossorigin href="/react/extend-lNyKLz3H.js">
+    <link rel="modulepreload" crossorigin href="/react/is-plain-obj-C1gvLhAf.js">
+    <link rel="modulepreload" crossorigin href="/react/trough-B_b8ryxu.js">
+    <link rel="modulepreload" crossorigin href="/react/unist-util-stringify-position-Ch_qCilz.js">
+    <link rel="modulepreload" crossorigin href="/react/vfile-message-Bq256rVA.js">
+    <link rel="modulepreload" crossorigin href="/react/vfile-tbz-BywF.js">
+    <link rel="modulepreload" crossorigin href="/react/unified-DydDuAn5.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-util-decode-numeric-character-reference-CNs1qBpV.js">
+    <link rel="modulepreload" crossorigin href="/react/decode-named-character-reference-C3-224fz.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-util-decode-string-strjl-tx.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-util-normalize-identifier-C9ANKk3v.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-util-chunked-DrRIdSP-.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-util-combine-extensions-Bka6Sc1c.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-util-character-CW3Cu1MS.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-factory-space-BchV91R7.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-util-classify-character-CzorGH29.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-util-resolve-all-PQCKh0dx.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-util-subtokenize-BcSgYDy4.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-factory-destination-DLydc0FX.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-factory-label-CMdOCIYC.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-factory-title-DeJDYPlY.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-factory-whitespace-bgEyS5T8.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-util-html-tag-name-DbKNfynz.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-core-commonmark-CgL7wv7s.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-CoJe3ZCJ.js">
+    <link rel="modulepreload" crossorigin href="/react/mdast-util-to-string-C_aolqmU.js">
+    <link rel="modulepreload" crossorigin href="/react/mdast-util-from-markdown-CN_bJuJS.js">
+    <link rel="modulepreload" crossorigin href="/react/remark-parse-BX9InQO9.js">
+    <link rel="modulepreload" crossorigin href="/react/@ungap-DDJC10qW.js">
+    <link rel="modulepreload" crossorigin href="/react/micromark-util-sanitize-uri-ffp67IDI.js">
+    <link rel="modulepreload" crossorigin href="/react/unist-util-position-60F3QETU.js">
+    <link rel="modulepreload" crossorigin href="/react/trim-lines-D8znQY54.js">
+    <link rel="modulepreload" crossorigin href="/react/unist-util-is-BPZGFiMU.js">
+    <link rel="modulepreload" crossorigin href="/react/unist-util-visit-parents-DZMunsV6.js">
+    <link rel="modulepreload" crossorigin href="/react/unist-util-visit-CWHsnU7X.js">
+    <link rel="modulepreload" crossorigin href="/react/mdast-util-to-hast-aC0CNdMo.js">
+    <link rel="modulepreload" crossorigin href="/react/remark-rehype-CjoCPiUl.js">
+    <link rel="modulepreload" crossorigin href="/react/comma-separated-tokens-Dw-VBL9A.js">
+    <link rel="modulepreload" crossorigin href="/react/property-information-DdDptki-.js">
+    <link rel="modulepreload" crossorigin href="/react/space-separated-tokens-D7QSIrTI.js">
+    <link rel="modulepreload" crossorigin href="/react/inline-style-parser-D4u_cg7q.js">
+    <link rel="modulepreload" crossorigin href="/react/style-to-object-BqE4XCOL.js">
+    <link rel="modulepreload" crossorigin href="/react/hast-util-whitespace-D4Wp6AEg.js">
+    <link rel="modulepreload" crossorigin href="/react/estree-util-is-identifier-name-BgBfM8ME.js">
+    <link rel="modulepreload" crossorigin href="/react/hast-util-to-jsx-runtime-7NpD0Bsh.js">
+    <link rel="modulepreload" crossorigin href="/react/html-url-attributes-D46m5wfe.js">
+    <link rel="modulepreload" crossorigin href="/react/react-markdown-CUBB3f3w.js">
+    <link rel="modulepreload" crossorigin href="/react/html-void-elements-CkdplsNl.js">
+    <link rel="modulepreload" crossorigin href="/react/entities-CCBHeVIA.js">
+    <link rel="modulepreload" crossorigin href="/react/parse5-Bj4auyz_.js">
+    <link rel="modulepreload" crossorigin href="/react/web-namespaces-bsVAaBS1.js">
+    <link rel="modulepreload" crossorigin href="/react/zwitch-C2o2j-tx.js">
+    <link rel="modulepreload" crossorigin href="/react/hast-util-parse-selector-TXfch5wI.js">
+    <link rel="modulepreload" crossorigin href="/react/hastscript-Bqedbh2r.js">
+    <link rel="modulepreload" crossorigin href="/react/vfile-location-LfEFwJ2h.js">
+    <link rel="modulepreload" crossorigin href="/react/hast-util-from-parse5-CH1Z3hD2.js">
+    <link rel="modulepreload" crossorigin href="/react/hast-util-to-parse5-Um_HjfjX.js">
+    <link rel="modulepreload" crossorigin href="/react/hast-util-raw-Cy82gQIG.js">
+    <link rel="modulepreload" crossorigin href="/react/rehype-raw-CjSWQKF9.js">
+    <link rel="modulepreload" crossorigin href="/react/color-name-Dju3oUBS.js">
+    <link rel="modulepreload" crossorigin href="/react/simple-swizzle-eild5XDT.js">
+    <link rel="modulepreload" crossorigin href="/react/color-string-BRNFdfrj.js">
+    <link rel="modulepreload" crossorigin href="/react/color-convert-CZ6UMrXX.js">
+    <link rel="modulepreload" crossorigin href="/react/color-D30Fo_qO.js">
+    <link rel="modulepreload" crossorigin href="/react/react-base16-styling-B7Z9owd3.js">
+    <link rel="modulepreload" crossorigin href="/react/react-json-tree-BQeGYzJH.js">
+    <link rel="modulepreload" crossorigin href="/react/pretty-bytes-BuUnCgYx.js">
+    <link rel="modulepreload" crossorigin href="/react/react-turnstile-ZGTTYLXf.js">
+    <link rel="modulepreload" crossorigin href="/react/papaparse-BB0yCw9z.js">
+    <link rel="modulepreload" crossorigin href="/react/mitt-DJ65BbbF.js">
+    <link rel="modulepreload" crossorigin href="/react/state-local-BBNhjlcY.js">
+    <link rel="modulepreload" crossorigin href="/react/@monaco-editor-BAdmkKya.js">
+    <link rel="modulepreload" crossorigin href="/react/monaco-editor-nLKlerPA.js">
+    <link rel="modulepreload" crossorigin href="/react/@sentry-DS3TqmWf.js">
+    <link rel="modulepreload" crossorigin href="/react/@sentry-internal-EKgD8iWN.js">
+    <link rel="stylesheet" crossorigin href="/react/react-datepicker-nN9yMcJF.css">
+    <link rel="stylesheet" crossorigin href="/react/react-phone-number-input-DpsRipQV.css">
+    <link rel="stylesheet" crossorigin href="/react/react-image-crop-JOTqagGk.css">
+    <link rel="stylesheet" crossorigin href="/react/monaco-editor-DVengLpi.css">
+    <link rel="stylesheet" crossorigin href="/react/index-CEyAUtRj.css">
+  </head>
+
+  <body class="h-full">
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

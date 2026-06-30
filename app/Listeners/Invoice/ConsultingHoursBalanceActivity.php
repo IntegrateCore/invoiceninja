@@ -59,12 +59,14 @@ class ConsultingHoursBalanceActivity implements ShouldQueue
     private function isConsultingHoursItem(object|array $item): bool
     {
         $marker = strtolower(trim(((string) data_get($item, 'product_key', '')) . ' ' . ((string) data_get($item, 'notes', ''))));
+        $custom_marker = strtolower(trim((string) data_get($item, 'custom_value2', '')));
 
         return str_contains($marker, 'consulting-hours')
             || str_contains($marker, 'consulting hours')
             || str_contains($marker, 'consulting_hours')
             || str_contains($marker, 'time left')
-            || str_contains($marker, 'hour pack');
+            || str_contains($marker, 'hour pack')
+            || str_contains($custom_marker, 'consulting-hours');
     }
 
     private function lineItemHours(object|array $item): float

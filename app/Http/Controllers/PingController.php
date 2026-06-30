@@ -14,6 +14,7 @@ namespace App\Http\Controllers;
 
 use App\Utils\Ninja;
 use App\Utils\SystemHealth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\Response;
 
 class PingController extends BaseController
@@ -82,7 +83,15 @@ class PingController extends BaseController
             // return response()->json(['message' => ctrans('texts.route_not_available'), 'errors' => []], 403);
         }
 
-        return response()->json(SystemHealth::check(), 200);
+        $isLocal = app()->environment('local');
+        $cacheKey = $isLocal ? 'system-health-local' : 'system-health';
+        $ttl = $isLocal ? now()->addMinutes(10) : now()->addMinutes(2);
+
+        $health = Cache::remember($cacheKey, $ttl, function () use ($isLocal) {
+            return SystemHealth::check(! $isLocal, ! $isLocal);
+        });
+
+        return response()->json($health, 200);
     }
 
     /**

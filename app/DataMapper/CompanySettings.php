@@ -41,7 +41,7 @@ class CompanySettings extends BaseSettings
 
     public $enable_client_portal = true; //@implemented
 
-    public $enable_client_portal_dashboard = false; // @TODO There currently is no dashboard so this is pending
+    public $enable_client_portal_dashboard = true; // portal dashboard is available again
 
     public $signature_on_pdf = false; //@implemented
 

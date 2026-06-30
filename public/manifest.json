@@ -1,27 +1,20 @@
 {
-    "name": "IntegrateCore",
-    "short_name": "IntegrateCore",
-    "start_url": ".",
-    "display": "standalone",
-    "background_color": "#13999A",
-    "theme_color": "#13999A",
-    "description": "IntegrateCore — invoice clients, track work-time, and get paid online.",
-    "orientation": "portrait-primary",
-    "prefer_related_applications": true,
-    "related_applications": [
-        {
-            "platform": "play",
-            "id": "com.invoiceninja.app"
-        }, {
-            "platform": "itunes",
-            "url": "https://testflight.apple.com/join/MJ6WpaXh"
-        }
-    ],
-    "icons": [
-        {
-            "src": "images/logo.png",
-            "sizes": "512x512",
-            "type": "image/png"
-        }
-    ]
+  "short_name": "IntegrateCore",
+  "name": "IntegrateCore",
+  "icons": [
+    {
+      "src": "favicon.ico?v=integratecore",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "logo180.png?v=integratecore",
+      "type": "image/png",
+      "sizes": "192x192"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#ffffff"
 }

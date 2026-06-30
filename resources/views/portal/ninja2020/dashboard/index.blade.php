@@ -82,7 +82,7 @@
                 {{ ctrans('texts.time_left') }}
             </p>
             <p class="text-2xl font-semibold text-[#212529] md:text-[32px]">
-                {{ App\Utils\Number::formatValueNoTrailingZeroes($client->consulting_hours_balance ?? 0, $client) }} {{ ctrans('texts.hours') }}
+                {{ number_format(\App\Utils\Number::roundValue((float) ($client->consulting_hours_balance ?? 0), 2), 2, '.', '') }} {{ ctrans('texts.hours') }}
             </p>
         </div>
     </div>

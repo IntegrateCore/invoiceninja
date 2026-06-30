@@ -16,7 +16,7 @@
                 <dd class="text-sm leading-5 text-gray-900 sm:mt-0 sm:col-span-2">
                     <input
                         type="url" class="input w-full" name="url" placeholder="https://example.com"
-                        pattern="https?://.*" size="45" value="{{ old('url', 'https://') }}" required>
+                        pattern="https?://.*" size="45" value="{{ old('url', config('app.url')) }}" required>
                         <small>(including http:// or https://)</small>
                 </dd>
             </div>
@@ -27,7 +27,7 @@
                 <dd class="mt-1 text-sm leading-5 text-gray-900 sm:mt-0 sm:col-span-2">
                     <label for="https">
                         <input type="checkbox" class="form-checkbox mr-1" name="https"
-                            id="https" {{ old('https') ? 'checked': '' }} checked>
+                            id="https" {{ old('https', str_starts_with(config('app.url'), 'https://')) ? 'checked': '' }}>
                         <span>{{ ctrans('texts.require') }}</span>
                         <span class="text-gray-600 text-xs ml-2">({{ ctrans('texts.recommended_in_production') }})</span>
                     </label>
@@ -91,7 +91,7 @@ FLUSH PRIVILEGES;
                     {{ ctrans('texts.host') }}*
                 </dt>
                 <dd class="text-sm leading-5 text-gray-900 sm:mt-0 sm:col-span-2">
-                    <input type="text" class="input w-full" name="db_host" required value="{{ old('host') ?: 'localhost'}}">
+                    <input type="text" class="input w-full" name="db_host" required value="{{ old('db_host', config('database.connections.mysql.host')) }}">
                 </dd>
             </div>
             <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6 sm:flex sm:items-center">
@@ -99,7 +99,7 @@ FLUSH PRIVILEGES;
                     {{ ctrans('texts.port') }}*
                 </dt>
                 <dd class="text-sm leading-5 text-gray-900 sm:mt-0 sm:col-span-2">
-                    <input type="text" class="input w-full" name="db_port" required value="{{ old('db_port') ?: '3306'}}">
+                    <input type="text" class="input w-full" name="db_port" required value="{{ old('db_port', config('database.connections.mysql.port')) }}">
                 </dd>
             </div>
             <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6 sm:flex sm:items-center">
@@ -107,7 +107,7 @@ FLUSH PRIVILEGES;
                     {{ ctrans('texts.database') }}*
                 </dt>
                 <dd class="text-sm leading-5 text-gray-900 sm:mt-0 sm:col-span-2">
-                    <input type="text" class="input w-full" name="db_database" required value="{{ old('database') ?: 'db-ninja-01'}}">
+                    <input type="text" class="input w-full" name="db_database" required value="{{ old('db_database', config('database.connections.mysql.database')) }}">
                 </dd>
             </div>
             <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6 sm:flex sm:items-center">
@@ -115,7 +115,7 @@ FLUSH PRIVILEGES;
                     {{ ctrans('texts.username') }}*
                 </dt>
                 <dd class="text-sm leading-5 text-gray-900 sm:mt-0 sm:col-span-2">
-                    <input type="text" class="input w-full" name="db_username" required value="{{ old('db_username') ?: 'ninja' }}">
+                    <input type="text" class="input w-full" name="db_username" required value="{{ old('db_username', config('database.connections.mysql.username')) }}">
                 </dd>
             </div>
             <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6 sm:flex sm:items-center">
@@ -123,7 +123,7 @@ FLUSH PRIVILEGES;
                     {{ ctrans('texts.password') }}
                 </dt>
                 <dd class="text-sm leading-5 text-gray-900 sm:mt-0 sm:col-span-2">
-                    <input type="password" class="input w-full" name="db_password" value="{{ old('db_password') ?: 'ninja' }}">
+                    <input type="password" class="input w-full" name="db_password" value="{{ old('db_password', config('database.connections.mysql.password')) }}">
                 </dd>
             </div>
             @endif

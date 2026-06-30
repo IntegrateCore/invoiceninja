@@ -49,6 +49,7 @@ use App\Libraries\Currency\Conversion\CurrencyApi;
  * @property bool $is_deleted
  * @property bool $is_running
  * @property string|null $time_log
+ * @property float $consulting_hours_consumed
  * @property string|null $number
  * @property float $rate
  * @property string $calculated_start_date
@@ -108,6 +109,7 @@ class Task extends BaseModel
         'description',
         'is_running',
         'time_log',
+        'consulting_hours_consumed',
         'status_id',
         'status_sort_order', //deprecated
         'invoice_documents',
@@ -121,6 +123,7 @@ class Task extends BaseModel
 
     protected $casts = [
         'meta' => TaskMeta::class,
+        'consulting_hours_consumed' => 'float',
         'updated_at' => 'timestamp',
         'created_at' => 'timestamp',
         'deleted_at' => 'timestamp',
@@ -292,7 +295,24 @@ class Task extends BaseModel
         }
 
         if ($this->status) {
-            return '<h5><span class="badge badge-primary">' . e($this->status?->name ?? '') . '</span></h5>'; //@phpstan-ignore-line
+            $statusName = strtolower(trim((string) ($this->status?->name ?? '')));
+            $maxStatusOrder = TaskStatus::query()
+                ->where('company_id', $this->company_id)
+                ->max('status_order');
+
+            $isCompleted = str_contains($statusName, 'done')
+                || str_contains($statusName, 'complete')
+                || str_contains($statusName, 'finished')
+                || str_contains($statusName, 'closed')
+                || (
+                    $maxStatusOrder !== null
+                    && $this->status_order !== null
+                    && (int) $this->status_order === (int) $maxStatusOrder
+                );
+
+            $badgeClass = $isCompleted ? 'badge-success' : 'badge-primary';
+
+            return '<h5><span class="badge ' . $badgeClass . '">' . e($this->status?->name ?? '') . '</span></h5>'; //@phpstan-ignore-line
         }
 
         return '';

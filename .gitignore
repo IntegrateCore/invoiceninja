@@ -29,6 +29,16 @@ _ide_helper.php
 .env.cypress
 /public/vendors/*
 *.log
+temp_root.html
+temp_setup.html
+ui/
+public/dap-logos/
+public/docuninja/
+public/gateway-card-images/
+public/images/client-portal-waves.jpg
+public/rsms/
+public/tinymce_6.4.2/
+public/tinymce_7.9.3/
 
 # Ignore local migrations
 storage/migrations
