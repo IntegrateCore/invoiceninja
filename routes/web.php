@@ -22,6 +22,9 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', [BaseController::class, 'flutterRoute'])->middleware('guest');
 
+Route::get('{path?}', [BaseController::class, 'flutterRoute'])
+    ->where('path', '^(?!api(?:/|$)|setup(?:/|$)|update(?:/|$)|password(?:/|$)|auth(?:/|$)|calendar_connection(?:/|$)|stripe(?:/|$)|yodlee(?:/|$)|nordigen(?:/|$)|checkout(?:/|$)|mollie(?:/|$)|gocardless(?:/|$)|square(?:/|$)|buy_now(?:/|$)|\.well-known(?:/|$)|client(?:/|$)|documents(?:/|$)|error(?:/|$)|set_password(?:/|$)|shop(?:/|$)|vendor(?:/|$)|payments(?:/|$)|broadcasting(?:/|$)|sanctum(?:/|$)|oauth(?:/|$)|favicon\.ico$|robots\.txt$).*$');
+
 Route::get('setup', [SetupController::class, 'index'])->middleware('guest');
 Route::post('setup', [SetupController::class, 'doSetup'])->middleware('throttle:10,1')->middleware('guest');
 Route::get('update', [SetupController::class, 'update'])->middleware('throttle:10,1')->middleware('guest');
