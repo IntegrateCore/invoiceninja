@@ -23,7 +23,7 @@ jobs:
 
       - name: Prepare React FrontEnd
         run: |
-          git clone https://${{secrets.commit_secret}}@github.com/bradleyseanf/ui.git
+          git clone https://github.com/bradleyseanf/ui.git
           cd ui
           git checkout main
           sed -i 's/VITE_IS_TEST=true/VITE_IS_TEST=false/' .env.example
@@ -88,12 +88,8 @@ jobs:
 
             pre_prune_docker
 
-            GHCR_TOKEN='${{ secrets.commit_secret }}'
-            if [ -n "$GHCR_TOKEN" ]; then
-              printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u bradleyseanf --password-stdin
-            else
-              echo 'Skipping GHCR login because commit_secret is empty.'
-            fi
+            GHCR_TOKEN='${{ secrets.GITHUB_TOKEN }}'
+            printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
             docker pull ghcr.io/integratecore/invoiceninja:latest
             docker compose up -d
