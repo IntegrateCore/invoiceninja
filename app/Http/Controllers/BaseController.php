@@ -1281,6 +1281,10 @@ class BaseController extends Controller
 
             $data['path'] = $this->setBuild();
 
+            if (request()->getHost() === 'admin.integratecore.net') {
+                return response()->view('react.index', $data)->header('X-Frame-Options', 'SAMEORIGIN', false);
+            }
+
             if (Ninja::isSelfHost() && $account->set_react_as_default_ap) {
                 return response()->view('react.index', $data)->header('X-Frame-Options', 'SAMEORIGIN', false);
             } else {

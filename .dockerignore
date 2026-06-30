@@ -1,0 +1,13 @@
+.git
+.github
+.env
+.env.*
+backups/
+mysql/
+storage/
+vendor/
+node_modules/
+public/storage/
+public/hot
+coverage/
+*.log
