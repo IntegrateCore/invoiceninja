@@ -3,6 +3,7 @@ name: Deploy
 on:
   push:
     branches:
+      - main
       - v5-stable
 
 jobs:
