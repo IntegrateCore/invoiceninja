@@ -62,6 +62,7 @@ COPY docker/php-fpm.conf /usr/local/etc/php-fpm.d/zz-invoiceninja.conf
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY preload.php /var/www/html/preload.php
 
 RUN chmod +x /usr/local/bin/entrypoint.sh \
     && mkdir -p /var/www/.config /var/www/html/storage /var/www/html/bootstrap/cache \
@@ -80,7 +81,8 @@ RUN composer install \
 
 COPY . .
 
-RUN php artisan package:discover --ansi \
+RUN mkdir -p /var/www/html/storage/framework/cache/data /var/www/html/storage/framework/sessions /var/www/html/storage/framework/views /var/www/html/bootstrap/cache \
+    && php artisan package:discover --ansi \
     && chown -R www-data:www-data /var/www/html \
     && find /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/public -type d -exec chmod 755 {} \; \
     && find /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/public -type f -exec chmod 644 {} \;
