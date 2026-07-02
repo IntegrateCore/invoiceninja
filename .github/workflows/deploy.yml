@@ -23,8 +23,8 @@ jobs:
 
       - name: Prepare React FrontEnd
         run: |
-          git clone https://github.com/bradleyseanf/ui.git
-          cd ui
+          git clone https://github.com/IntegrateCore/invoiceninja-ui.git
+          cd invoiceninja-ui
           git checkout main
           sed -i 's/VITE_IS_TEST=true/VITE_IS_TEST=false/' .env.example
           echo VITE_PUSHER_APP_KEY=f0111a02782708da651f >> .env.example
