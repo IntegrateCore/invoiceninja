@@ -35,8 +35,8 @@ class PdfGenerationTest extends TestCase
     {
         $pdf = new Snappdf();
 
-        if (config('ninja.snappdf_chromium_path')) {
-            $pdf->setChromiumPath(config('ninja.snappdf_chromium_path'));
+        if ($chromiumPath = $this->resolveChromiumPath()) {
+            $pdf->setChromiumPath($chromiumPath);
         }
 
         if (config('ninja.snappdf_chromium_arguments')) {
@@ -49,5 +49,29 @@ class PdfGenerationTest extends TestCase
             ->generate();
 
         $this->assertNotNull($pdf);
+    }
+
+    private function resolveChromiumPath(): ?string
+    {
+        $configuredPath = config('ninja.snappdf_chromium_path');
+
+        if (is_string($configuredPath) && $configuredPath !== '') {
+            return $configuredPath;
+        }
+
+        $macBrowserPaths = [
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/Applications/Chromium.app/Contents/MacOS/Chromium',
+            '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+            '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+        ];
+
+        foreach ($macBrowserPaths as $browserPath) {
+            if (is_file($browserPath) && is_executable($browserPath)) {
+                return $browserPath;
+            }
+        }
+
+        return null;
     }
 }
