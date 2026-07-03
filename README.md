@@ -35,3 +35,11 @@ docker system prune -af --volumes
 - Keep `.env`, storage files, database data, and backups on the server only.
 - Production runs PHP-FPM, Nginx, the queue worker, and the scheduler inside the image.
 - Production uses `ghcr.io/integratecore/invoiceninja:latest`.
+
+## Dev branch
+
+The `dev` branch is for the on-prem test server on `brates-server`.
+
+- Pushing to `dev` builds and publishes `ghcr.io/integratecore/invoiceninja:dev`.
+- `brates-server` polls the `dev` branch every 5 minutes, pulls the new image when it changes, and restarts the local dev stack.
+- Dev access stays on the local network and does not touch production.
