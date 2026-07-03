@@ -2,6 +2,10 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 
     <head>
+        @php
+            $appUrl = config('ninja.app_url');
+            $assetBase = rtrim($appUrl, '/') . '/';
+        @endphp
         <!-- Error: {{ session('error') }} -->
          @if (isset($company) && $company->matomo_url && $company->matomo_id)
             <script>
@@ -55,7 +59,7 @@
         @if(strpos(Request::url(),'setup') === false)
         @vite('resources/js/app.js')
         @else
-        <script src="{{ str_replace("setup", "", Request::url())}}js/app.js" defer></script>
+        <script src="{{ $assetBase }}js/app.js" defer></script>
         @endif
 
         <!-- Fonts -->
@@ -77,7 +81,7 @@
         @if(strpos(Request::url(),'setup') === false)
             @vite('resources/sass/app.scss')
         @else
-            <link href="{{ str_replace("setup", "", Request::url())}}css/app.css" rel="stylesheet">
+            <link href="{{ $assetBase }}css/app.css" rel="stylesheet">
         @endif
 
         <link rel="canonical" href="{{ config('ninja.app_url') }}/{{ request()->path() }}"/>
@@ -86,7 +90,7 @@
         @stack('head')
 
         @if(strpos(Request::url(),'setup'))
-            <meta name="setup-db-check" content="{{ str_replace("setup", "", Request::url())}}setup/check_db">
+            <meta name="setup-db-check" content="{{ $assetBase }}setup/check_db">
         @endif
 
         <link rel="stylesheet" type="text/css" href="{{ asset('vendor/cookieconsent@3/cookieconsent.min.css') }}" />
