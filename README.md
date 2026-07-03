@@ -2,10 +2,10 @@
 
 This repo is set up for one source repo and one production image:
 
-1. Clone or pull this repo locally on your MacBook from `main`.
+1. Clone or pull this repo locally from `main`.
 2. Make your code or branding changes.
 3. Test locally.
-4. Build the Docker image on your MacBook for `linux/amd64`.
+4. Build the Docker image locally for `linux/amd64`.
 5. Push the image to GitHub Container Registry.
 6. Push the source changes to GitHub on `main`.
 7. Hetzner pulls the image and restarts the containers.
