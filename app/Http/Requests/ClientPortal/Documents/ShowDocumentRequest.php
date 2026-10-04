@@ -38,7 +38,7 @@ class ShowDocumentRequest extends FormRequest
         // Documents attached directly to a client.
         // Check by email rather than client_id so that contacts shared across multiple
         // clients in the same company (and client-switcher sessions) are handled correctly.
-        if ($document->documentable_type == 'App\Models\Client') {
+        if ($document->is_public && $document->documentable_type == 'App\Models\Client') {
             return ClientContact::where('client_id', $document->documentable_id)
                                 ->where('email', $contact->email)
                                 ->where('company_id', $contact->company_id)

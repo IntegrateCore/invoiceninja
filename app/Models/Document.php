@@ -177,6 +177,9 @@ class Document extends BaseModel
 
     public function generateUrl($absolute = false)
     {
+        if ($this->disk === 'integratecore') {
+            return $this->generateRoute($absolute);
+        }
         $url = Storage::disk($this->disk)->url($this->url);
 
         if ($url && $absolute) {
@@ -202,21 +205,39 @@ class Document extends BaseModel
 
     public function deleteFile()
     {
+        if ($this->disk === 'integratecore') {
+            app(\App\Services\IntegrateCore\FileLibrary::class)->delete(app(\App\Services\IntegrateCore\ClientFiles::class)->path($this));
+            return;
+        }
         Storage::disk($this->disk)->delete($this->url);
     }
 
     public function filePath()
     {
+        if ($this->disk === 'integratecore') {
+            return app(\App\Services\IntegrateCore\FileLibrary::class)->temporaryPath(app(\App\Services\IntegrateCore\ClientFiles::class)->path($this));
+        }
         return Storage::disk($this->disk)->url($this->url);
     }
 
     public function diskPath(): string
     {
+        if ($this->disk === 'integratecore') {
+            return $this->filePath();
+        }
         return Storage::disk($this->disk)->path($this->url);
     }
 
     public function getFile()
     {
+        if ($this->disk === 'integratecore') {
+            $stream = app(\App\Services\IntegrateCore\FileLibrary::class)->read(app(\App\Services\IntegrateCore\ClientFiles::class)->path($this))->getBody();
+            try {
+                return $stream->getContents();
+            } finally {
+                $stream->close();
+            }
+        }
         return Storage::disk($this->disk)->get($this->url);
     }
 

@@ -82,6 +82,15 @@ class UploadFile implements ShouldQueue
             return null;
         }
 
+        if ($this->type === self::DOCUMENT && config('integratecore.enabled')) {
+            $client = $this->entity instanceof \App\Models\Client ? $this->entity
+                : ($this->entity->client_id ? \App\Models\Client::find($this->entity->client_id) : null);
+            $files = app(\App\Services\IntegrateCore\ClientFiles::class);
+            if ($client && $client->company_id === $this->company->id && $files->mapping($client)) {
+                return $files->upload($this->file, $client, (bool) $this->is_public, $this->entity);
+            }
+        }
+
         $path = self::PROPERTIES[$this->type]['path'];
 
         if ($this->company) {

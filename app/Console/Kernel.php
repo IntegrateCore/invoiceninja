@@ -53,6 +53,10 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule)
     {
+        if (config('integratecore.enabled')) {
+            $schedule->command('integratecore:client-files --migrate')->everyMinute()->withoutOverlapping();
+        }
+
         /* Check for the latest version of Invoice Ninja */
         $schedule->job(new VersionCheck())->daily();
 

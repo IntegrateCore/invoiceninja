@@ -50,6 +50,9 @@ class DocumentController extends Controller
 
     public function download(ShowDocumentRequest $request, Document $document)
     {
+        if ($document->disk === 'integratecore') {
+            return $this->libraryDownload($document);
+        }
         return Storage::disk($document->disk)->download($document->url, $document->name);
     }
 
@@ -59,6 +62,9 @@ class DocumentController extends Controller
 
         /** @var \App\Models\Document $document **/
         $document = Document::where('hash', $document_hash)->firstOrFail();
+        if ($document->disk === 'integratecore') {
+            abort_unless(auth()->user() && auth()->user()->company()->id === $document->company_id && auth()->user()->can('view', $document), 403);
+        }
 
         $headers = ['Cache-Control:' => 'no-cache'];
 
@@ -66,6 +72,9 @@ class DocumentController extends Controller
             $headers = array_merge($headers, ['Content-Disposition' => 'inline']);
         }
 
+        if ($document->disk === 'integratecore') {
+            return $this->libraryDownload($document);
+        }
         return Storage::disk($document->disk)->download($document->url, $document->name, $headers);
     }
 
@@ -89,9 +98,20 @@ class DocumentController extends Controller
             $headers = array_merge($headers, ['Content-Disposition' => 'inline']);
         }
 
+        if ($document->disk === 'integratecore') {
+            return $this->libraryDownload($document);
+        }
         return Storage::disk($document->disk)->download($document->url, $document->name, $headers);
     }
 
+
+    private function libraryDownload(Document $document)
+    {
+        return app(\App\Services\IntegrateCore\FileLibrary::class)->download(
+            app(\App\Services\IntegrateCore\ClientFiles::class)->path($document),
+            $document->name, $document->getMimeType(), request()->boolean('inline')
+        );
+    }
 
     public function downloadMultiple(DownloadMultipleDocumentsRequest $request)
     {

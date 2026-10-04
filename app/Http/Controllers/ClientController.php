@@ -111,6 +111,9 @@ class ClientController extends BaseController
      */
     public function show(ShowClientRequest $request, Client $client)
     {
+        if (config('integratecore.enabled')) {
+            app(\App\Services\IntegrateCore\ClientFiles::class)->sync($client);
+        }
 
         if (auth()->user()->hasExcludedPermissions($this->client_excludable_permissions, $this->client_excludable_overrides)) {
             foreach ($this->client_exclusion_fields as $field) {
@@ -475,19 +478,15 @@ class ClientController extends BaseController
 
     public function documents(ClientDocumentsRequest $request, Client $client)
     {
+        if (config('integratecore.enabled')) {
+            app(\App\Services\IntegrateCore\ClientFiles::class)->sync($client);
+        }
 
         $this->entity_type = Document::class;
 
         $this->entity_transformer = DocumentTransformer::class;
 
-        $documents = Document::query()
-            ->company()
-            ->whereHasMorph('documentable', [Invoice::class, Quote::class, Credit::class, Expense::class, Payment::class, Task::class, RecurringInvoice::class, RecurringExpense::class, Project::class], function ($query) use ($client) {
-                $query->where('client_id', $client->id);
-            })
-            ->orWhereHasMorph('documentable', [Client::class], function ($query) use ($client) {
-                $query->where('id', $client->id);
-            })
+        $documents = app(\App\Services\IntegrateCore\ClientFiles::class)->clientDocuments($client)
             ->when(strlen($request->input('filter', '')) > 1, function ($query) use ($request) {
                 $query->where('name', 'like', '%' . $request->input('filter', '') . '%');
             })

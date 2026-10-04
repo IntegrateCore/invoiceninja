@@ -122,6 +122,13 @@ class DocumentController extends BaseController
 
     public function download(ShowDocumentRequest $request, Document $document)
     {
+        if ($document->disk === 'integratecore') {
+            return app(\App\Services\IntegrateCore\FileLibrary::class)->download(
+                app(\App\Services\IntegrateCore\ClientFiles::class)->path($document),
+                $document->name, $document->getMimeType(), request()->boolean('inline')
+            );
+        }
+
         $headers = [];
 
         if (request()->input('inline') == 'true') {

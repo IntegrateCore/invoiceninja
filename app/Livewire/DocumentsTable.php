@@ -119,6 +119,9 @@ class DocumentsTable extends Component
     protected function documents()
     {
         $client = $this->client();
+        if (config('integratecore.enabled')) {
+            app(\App\Services\IntegrateCore\ClientFiles::class)->sync($client);
+        }
 
         return $client->documents()
             ->where('is_public', true)
