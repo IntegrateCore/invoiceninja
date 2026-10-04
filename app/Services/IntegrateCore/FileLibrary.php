@@ -3,6 +3,8 @@
 namespace App\Services\IntegrateCore;
 
 use GuzzleHttp\Client as HttpClient;
+use GuzzleHttp\Exception\ClientException;
+use GuzzleHttp\Psr7\Utils;
 use Illuminate\Support\Facades\Cache;
 use Psr\Http\Message\ResponseInterface;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -10,6 +12,13 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 /** Server-side access to a File Browser account scoped to the client library. */
 class FileLibrary
 {
+    public function __construct(private ?HttpClient $http = null) {}
+
+    private function tokenKey(): string
+    {
+        return 'integratecore-file-token-' . hash('sha256', (string) config('integratecore.url') . config('integratecore.username'));
+    }
+
     public static function visiblePath(string $path): bool
     {
         if ($path === '' || str_contains($path, '\\') || preg_match('/[\x00-\x1f]/', $path)) {
@@ -31,8 +40,8 @@ class FileLibrary
 
     private function token(): string
     {
-        return Cache::remember('integratecore-file-token-' . hash('sha256', (string) config('integratecore.url') . config('integratecore.username')), 1800, function () {
-            $response = (new HttpClient(['timeout' => 15]))->post(rtrim(config('integratecore.url'), '/') . '/api/login', [
+        return Cache::remember($this->tokenKey(), 1800, function () {
+            $response = ($this->http ?? new HttpClient(['timeout' => 15]))->post(rtrim(config('integratecore.url'), '/') . '/api/login', [
                 'json' => ['username' => config('integratecore.username'), 'password' => config('integratecore.password')],
             ]);
             return (string) $response->getBody();
@@ -44,10 +53,31 @@ class FileLibrary
         if (!config('integratecore.enabled')) {
             throw new \RuntimeException('The client file library is not enabled.');
         }
+        $body = array_key_exists('body', $options) ? Utils::streamFor($options['body']) : null;
+        if ($body) {
+            $options['body'] = $body;
+        }
         $options['headers']['X-Auth'] = $this->token();
-        return (new HttpClient(['connect_timeout' => 10, 'timeout' => 120]))->request(
-            $method, rtrim(config('integratecore.url'), '/') . '/api/' . $endpoint, $options
-        );
+        $http = $this->http ?? new HttpClient(['connect_timeout' => 10, 'timeout' => 120]);
+        $url = rtrim(config('integratecore.url'), '/') . '/api/' . $endpoint;
+        try {
+            return $http->request($method, $url, $options);
+        } catch (ClientException $e) {
+            if ($e->getResponse()->getStatusCode() !== 401) {
+                throw $e;
+            }
+            Cache::forget($this->tokenKey());
+            // Retry only an explicit authentication rejection. Ambiguous failures
+            // must never replay a write that may already have succeeded remotely.
+            if ($body) {
+                if (!$body->isSeekable()) {
+                    throw $e;
+                }
+                $body->rewind();
+            }
+            $options['headers']['X-Auth'] = $this->token();
+            return $http->request($method, $url, $options);
+        }
     }
 
     private function encoded(string $path): string
@@ -62,10 +92,23 @@ class FileLibrary
     {
         $suffix = $folder === '' ? '' : $this->encoded($folder);
         $data = json_decode((string) $this->request('GET', 'resources/' . $suffix)->getBody(), true, 512, JSON_THROW_ON_ERROR);
-        if (!($data['isDir'] ?? false)) {
+        if (!is_array($data) || ($data['isDir'] ?? null) !== true || !array_key_exists('items', $data) || !is_array($data['items'])) {
             throw new \RuntimeException('The selected library folder is not a directory.');
         }
-        return array_values(array_filter($data['items'] ?? [], fn ($item) => self::visiblePath($item['name']) && !($item['isSymlink'] ?? false)));
+        $entries = [];
+        foreach ($data['items'] as $item) {
+            if (!is_array($item) || !is_string($item['name'] ?? null) || !is_bool($item['isDir'] ?? null)) {
+                throw new \RuntimeException('The file library returned an invalid directory listing.');
+            }
+            if (!self::visiblePath($item['name']) || str_contains($item['name'], '/') || ($item['isSymlink'] ?? false)) {
+                continue;
+            }
+            if (!$item['isDir'] && (!is_int($item['size'] ?? null) || $item['size'] < 0)) {
+                throw new \RuntimeException('The file library returned an invalid file size.');
+            }
+            $entries[] = $item;
+        }
+        return $entries;
     }
 
     public function files(string $folder): array
@@ -73,6 +116,7 @@ class FileLibrary
         $result = [];
         $queue = [$folder];
         $visited = 0;
+        $discovered = 0;
         // Bound traversal to avoid an accidentally selected enormous folder exhausting the server.
         while ($queue !== []) {
             if (++$visited > 10000) {
@@ -80,15 +124,15 @@ class FileLibrary
             }
             $directory = array_shift($queue);
             foreach ($this->entries($directory) as $entry) {
+                if (++$discovered > 10000) {
+                    throw new \RuntimeException('The client folder exceeds the 10,000 entry limit.');
+                }
                 $path = $directory . '/' . $entry['name'];
                 if ($entry['isDir']) {
                     $queue[] = $path;
                 } else {
                     $entry['library_path'] = $path;
                     $result[] = $entry;
-                }
-                if (count($queue) + count($result) > 10000) {
-                    throw new \RuntimeException('The client folder exceeds the 10,000 file limit.');
                 }
             }
         }
@@ -125,20 +169,44 @@ class FileLibrary
         }
     }
 
-    public function temporaryPath(string $path): string
+    public function temporaryPath(string $path, ?int $maximumBytes = null): string
     {
         $temporary = tempnam(sys_get_temp_dir(), 'integratecore-');
-        $output = fopen($temporary, 'wb');
-        $input = $this->read($path)->getBody();
-        try {
-            while (!$input->eof()) {
-                fwrite($output, $input->read(65536));
-            }
-        } finally {
-            fclose($output);
-            $input->close();
+        if ($temporary === false) {
+            throw new \RuntimeException('A temporary document could not be created.');
         }
         register_shutdown_function(static fn () => is_file($temporary) ? unlink($temporary) : null);
+        $output = fopen($temporary, 'wb');
+        $input = null;
+        try {
+            if ($output === false) {
+                throw new \RuntimeException('A temporary document could not be opened.');
+            }
+            $input = $this->read($path)->getBody();
+            $bytes = 0;
+            while (!$input->eof()) {
+                $chunk = $input->read(65536);
+                $bytes += strlen($chunk);
+                if ($maximumBytes !== null && $bytes > $maximumBytes) {
+                    throw new \RuntimeException('The document exceeds the download size limit.');
+                }
+                while ($chunk !== '') {
+                    $written = fwrite($output, $chunk);
+                    if ($written === false || $written === 0) {
+                        throw new \RuntimeException('A temporary document could not be written.');
+                    }
+                    $chunk = substr($chunk, $written);
+                }
+            }
+        } catch (\Throwable $e) {
+            @unlink($temporary);
+            throw $e;
+        } finally {
+            if (is_resource($output)) {
+                fclose($output);
+            }
+            $input?->close();
+        }
         return $temporary;
     }
 

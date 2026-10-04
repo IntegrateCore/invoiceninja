@@ -134,6 +134,7 @@ class StoreClientRequest extends Request
         $input = $this->all();
         /** @var \App\Models\User $user */
         $user = auth()->user();
+        $input = app(\App\Services\IntegrateCore\ConsultingHours::class)->stripComputedInput($input, $user->company());
 
         if ($this->file('documents') instanceof \Illuminate\Http\UploadedFile) {
             $this->files->set('documents', [$this->file('documents')]);

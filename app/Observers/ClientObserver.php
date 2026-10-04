@@ -80,6 +80,9 @@ class ClientObserver
      */
     public function updated(Client $client)
     {
+        if ($client->wasChanged('consulting_hours_balance')) {
+            app(\App\Services\IntegrateCore\ConsultingHours::class)->reconcile($client);
+        }
 
         /** Monitor postal code changes for US based clients for tax calculations */
         if (($client->getOriginal('shipping_postal_code') != $client->shipping_postal_code || $client->getOriginal('postal_code') != $client->postal_code) && $client->country_id == 840 && $client->company->calculate_taxes && !$client->company->account->isFreeHostedClient()) {

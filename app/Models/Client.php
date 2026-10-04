@@ -205,6 +205,17 @@ class Client extends BaseModel implements HasLocalePreference
         'contacts.company',
     ];
 
+    protected static function booted(): void
+    {
+        static::saving(function (Client $client) {
+            if ($client->isDirty('consulting_hours_balance')) {
+                app(\App\Services\IntegrateCore\ConsultingHours::class)->track(
+                    $client, (float) $client->getOriginal('consulting_hours_balance', 0)
+                );
+            }
+        });
+    }
+
     protected $casts = [
         'is_deleted' => 'boolean',
         'country_id' => 'string',

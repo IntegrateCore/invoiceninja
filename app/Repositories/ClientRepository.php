@@ -281,6 +281,8 @@ class ClientRepository extends BaseRepository
         $clone_client->paid_to_date = 0;
         $clone_client->credit_balance = 0;
         $clone_client->consulting_hours_balance = 0;
+        $clone_client->consulting_hours_funded = false;
+        $clone_client->consulting_hours_alerted_at = null;
         $clone_client->payment_balance = 0;
         $clone_client->save();
 

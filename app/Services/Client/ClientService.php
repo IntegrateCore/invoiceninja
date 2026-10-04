@@ -157,8 +157,10 @@ class ClientService
     public function updateConsultingHoursBalance(float $amount)
     {
         DB::connection(config('database.default'))->transaction(function () use ($amount) {
-            $this->client = Client::withTrashed()->where('id', $this->client->id)->lockForUpdate()->first();
-            $this->client->consulting_hours_balance = round((float) $this->client->consulting_hours_balance + $amount, 6);
+            $this->client = Client::withTrashed()->withoutEagerLoads()->where('id', $this->client->id)->lockForUpdate()->first();
+            $previous = (float) $this->client->consulting_hours_balance;
+            $this->client->consulting_hours_balance = round($previous + $amount, 6);
+            app(\App\Services\IntegrateCore\ConsultingHours::class)->track($this->client, $previous);
             $this->client->saveQuietly();
         }, 2);
 

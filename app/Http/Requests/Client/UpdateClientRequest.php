@@ -147,6 +147,7 @@ class UpdateClientRequest extends Request
 
         /** @var  \App\Models\User $user */
         $user = auth()->user();
+        $input = app(\App\Services\IntegrateCore\ConsultingHours::class)->stripComputedInput($input, $user->company());
 
         if ($this->file('file') instanceof \Illuminate\Http\UploadedFile) {
             $this->files->set('file', [$this->file('file')]);

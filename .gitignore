@@ -78,3 +78,6 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Private development verification artifacts
+/.local/

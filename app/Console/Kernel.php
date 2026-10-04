@@ -58,6 +58,10 @@ class Kernel extends ConsoleKernel
             $schedule->command('integratecore:client-files --migrate')->everyMinute()->withoutOverlapping();
         }
 
+        if (config('integratecore.consulting_hours_alerts_enabled')) {
+            $schedule->command('integratecore:consulting-hours-alerts')->everyMinute()->withoutOverlapping();
+        }
+
         /* Check for the latest version of Invoice Ninja */
         $schedule->job(new VersionCheck())->daily();
 

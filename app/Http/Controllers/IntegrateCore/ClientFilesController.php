@@ -22,7 +22,8 @@ class ClientFilesController extends Controller
     public function folders(ShowClientRequest $request, Client $client, FileLibrary $library)
     {
         Gate::authorize('edit', $client);
-        $folders = array_values(array_map(fn ($entry) => $entry['name'], array_filter($library->entries(), fn ($entry) => $entry['isDir'])));
+        $assigned = \App\Models\ClientFileFolder::where('client_id', '!=', $client->id)->pluck('folder')->all();
+        $folders = array_values(array_map(fn ($entry) => $entry['name'], array_filter($library->entries(), fn ($entry) => $entry['isDir'] && !in_array($entry['name'], $assigned, true))));
         sort($folders, SORT_NATURAL | SORT_FLAG_CASE);
         return response()->json(['data' => $folders]);
     }
@@ -32,6 +33,18 @@ class ClientFilesController extends Controller
         Gate::authorize('edit', $client);
         $validated = $request->validate(['folder' => 'required|string|max:191']);
         return response()->json(['data' => $files->assign($client, $validated['folder'])]);
+    }
+
+    public function browse(ShowClientRequest $request, Client $client, \App\Services\IntegrateCore\DocumentLibrary $library)
+    {
+        $path = $request->validate(['path' => 'nullable|string|max:2048'])['path'] ?? '';
+        return response()->json(['data' => $library->listing($client, $path, false)]);
+    }
+
+    public function archive(ShowClientRequest $request, Client $client, \App\Services\IntegrateCore\DocumentLibrary $library)
+    {
+        $path = $request->validate(['path' => 'nullable|string|max:2048'])['path'] ?? '';
+        return $library->archive($client, $path, false);
     }
 
     public function refresh(ShowClientRequest $request, Client $client, ClientFiles $files)

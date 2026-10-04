@@ -6375,6 +6375,8 @@ $lang = array(
     'estimated_hours' => 'Estimated Hours',
     'unestimated_tasks' => 'Unestimated Tasks',
     'tasks_over_estimate' => 'Tasks Over Estimate',
+    'download_folder_zip' => 'Download folder as ZIP',
+    'no_documents_in_folder' => 'No documents in this folder.',
 );
 
 return $lang;

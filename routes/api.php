@@ -208,6 +208,8 @@ Route::group(['middleware' => ['throttle:api', 'token_auth', 'valid_json','local
     Route::post('clients/{client}/updateTaxData', [ClientController::class, 'updateTaxData'])->name('clients.update_tax_data')->middleware('throttle:3,1');
     Route::post('clients/{client}/{mergeable_client}/merge', [ClientController::class, 'merge'])->name('clients.merge')->middleware('password_protected');
     Route::post('clients/bulk', [ClientController::class, 'bulk'])->name('clients.bulk');
+    Route::get('clients/{client}/file-library/browse', [\App\Http\Controllers\IntegrateCore\ClientFilesController::class, 'browse']);
+    Route::get('clients/{client}/file-library/archive', [\App\Http\Controllers\IntegrateCore\ClientFilesController::class, 'archive']);
     Route::get('clients/{client}/file-library', [\App\Http\Controllers\IntegrateCore\ClientFilesController::class, 'show']);
     Route::get('clients/{client}/file-library/folders', [\App\Http\Controllers\IntegrateCore\ClientFilesController::class, 'folders']);
     Route::put('clients/{client}/file-library', [\App\Http\Controllers\IntegrateCore\ClientFilesController::class, 'update']);

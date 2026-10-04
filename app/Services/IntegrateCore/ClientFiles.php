@@ -59,6 +59,7 @@ class ClientFiles
             'library_url' => $mapping ? rtrim(config('integratecore.library_url'), '/') . '/' . rawurlencode($mapping->folder) . '/' : null,
             'pending_migrations' => $this->clientDocuments($client)->where('disk', '!=', 'integratecore')->count(),
             'document_count' => $this->clientDocuments($client)->where('disk', 'integratecore')->count(),
+            'privacy_review_count' => $this->clientDocuments($client)->onlyTrashed()->where('disk', 'integratecore')->where('is_public', false)->count(),
         ];
     }
 
@@ -90,7 +91,21 @@ class ClientFiles
                     $context = hash_init('sha256');
                     hash_update_stream($context, $source);
                     $checksum = hash_final($context);
-                    rewind($source);
+                    if (!rewind($source)) {
+                        throw new \RuntimeException('The original document could not be rewound. Migration stopped; originals are retained.');
+                    }
+                    // Reserve the destination before copying. Failed copies must never be
+                    // mistaken for newly shared external files by a later synchronization.
+                    DB::table('client_file_migrations')->insertOrIgnore([
+                        'document_id' => $document->id, 'client_id' => $client->id,
+                        'original_disk' => $document->disk, 'original_url' => $document->url,
+                        'library_path' => $path, 'sha256' => $checksum,
+                        'created_at' => now(), 'updated_at' => now(),
+                    ]);
+                    $reservation = DB::table('client_file_migrations')->where('document_id', $document->id)->first();
+                    if (!$reservation || $reservation->client_id != $client->id || $reservation->original_disk !== $document->disk || $reservation->original_url !== $document->url || $reservation->library_path !== $path || !hash_equals($reservation->sha256, $checksum)) {
+                        throw new \RuntimeException('The document migration reservation no longer matches the original. Original document retained.');
+                    }
                     try {
                         $this->library->upload($path, $source);
                     } catch (\GuzzleHttp\Exception\ClientException $e) {
@@ -102,13 +117,7 @@ class ClientFiles
                     if (!hash_equals($checksum, $this->library->checksum($path))) {
                         throw new \RuntimeException('Document checksum mismatch. Original document retained.');
                     }
-                    DB::transaction(function () use ($client, $document, $path, $checksum) {
-                        DB::table('client_file_migrations')->insertOrIgnore([
-                            'document_id' => $document->id, 'client_id' => $client->id,
-                            'original_disk' => $document->disk, 'original_url' => $document->url,
-                            'library_path' => $path, 'sha256' => $checksum,
-                            'created_at' => now(), 'updated_at' => now(),
-                        ]);
+                    DB::transaction(function () use ($document, $path) {
                         $document->disk = 'integratecore';
                         $document->url = $path;
                         $document->save();
@@ -139,12 +148,21 @@ class ClientFiles
         try {
             // Complete listing before any record changes. A disconnected library must never look empty.
             $files = $this->library->files($mapping->folder);
-            $existing = $this->clientDocuments($client)->where('disk', 'integratecore')->get()->keyBy('url');
+            $existing = $this->clientDocuments($client)->withTrashed()->where('disk', 'integratecore')->get()->keyBy('url');
+            $listedPaths = array_fill_keys(array_column($files, 'library_path'), true);
+            $privacyReview = $existing->contains(fn ($document) => !$document->is_public && ($document->trashed() || !isset($listedPaths[$document->url])));
+            $reserved = DB::table('client_file_migrations')->leftJoin('documents', 'documents.id', '=', 'client_file_migrations.document_id')
+                ->where('client_file_migrations.client_id', $client->id)
+                ->where(fn ($query) => $query->whereNull('documents.id')->orWhere('documents.disk', '!=', 'integratecore'))
+                ->pluck('client_file_migrations.library_path')->flip()->all();
             $seen = [];
-            DB::transaction(function () use ($files, $existing, $client, $mapping, &$seen) {
+            DB::transaction(function () use ($files, $existing, $client, $mapping, $reserved, $privacyReview, &$seen) {
                 foreach ($files as $file) {
                     $path = $file['library_path'];
-                    $seen[] = $path;
+                    if (isset($reserved[$path])) {
+                        continue;
+                    }
+                    $seen[$path] = true;
                     $document = $existing->get($path);
                     if (!$document) {
                         $document = new Document();
@@ -154,20 +172,29 @@ class ClientFiles
                         $document->url = $path;
                         $document->name = substr($path, strlen($mapping->folder) + 1);
                         $document->hash = bin2hex(random_bytes(32));
-                        $document->is_public = true;
+                        $document->is_public = !$privacyReview;
                         $document->documentable_type = Client::class;
                         $document->documentable_id = $client->id;
                     }
                     $document->type = strtolower(pathinfo($path, PATHINFO_EXTENSION));
                     $document->size = $file['size'];
+                    if ($document->trashed()) {
+                        $document->restore();
+                    }
                     if (!$document->exists || $document->isDirty()) {
                         $document->save();
                     }
                 }
                 foreach ($existing as $path => $document) {
-                    if (!in_array($path, $seen, true)) {
+                    if (!isset($seen[$path])) {
                         // The external file disappeared. Remove only its index, never other library files.
-                        $document->forceDelete();
+                        if ($document->is_public) {
+                            $document->forceDelete();
+                        } elseif (!$document->trashed()) {
+                            // Keep a private tombstone: an external rename or edit cannot
+                            // silently turn the unknown replacement into a shared document.
+                            $document->delete();
+                        }
                     }
                 }
             });
@@ -181,9 +208,9 @@ class ClientFiles
     public function path(Document $document): string
     {
         $entity = $document->documentable;
-        $client = $entity instanceof Client ? $entity : ($entity?->client_id ? Client::find($entity->client_id) : null);
+        $client = $entity instanceof Client ? $entity : ($entity?->client_id ? Client::where('company_id', $document->company_id)->find($entity->client_id) : null);
         $mapping = $client ? $this->mapping($client) : null;
-        abort_unless($mapping && $mapping->company_id === $document->company_id && FileLibrary::inside($document->url, $mapping->folder), 404);
+        abort_unless($mapping && $entity->company_id === $document->company_id && $client->company_id === $document->company_id && $mapping->company_id === $document->company_id && FileLibrary::inside($document->url, $mapping->folder), 404);
         return $document->url;
     }
 
@@ -194,24 +221,21 @@ class ClientFiles
 
     private function uploadLocked($file, Client $client, bool $public, $entity): Document
     {
+        if ($entity && ($entity->company_id !== $client->company_id || ($entity instanceof Client ? $entity->id !== $client->id : $entity->client_id !== $client->id))) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['documents' => 'The document must belong to this client and company.']);
+        }
         $mapping = $this->mapping($client);
         $name = $file->getClientOriginalName();
         if (!$mapping || !FileLibrary::visiblePath($name) || str_contains($name, '/')) {
             throw \Illuminate\Validation\ValidationException::withMessages(['documents' => 'Choose a visible file with a valid filename.']);
         }
         $path = $mapping->folder . '/' . $name;
+        if ($this->clientDocuments($client)->withTrashed()->where('disk', 'integratecore')->where('url', $path)->exists()) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['documents' => 'A file with this name already exists in the client folder.']);
+        }
         $stream = fopen($file->getRealPath(), 'rb');
-        try {
-            $this->library->upload($path, $stream);
-        } catch (\GuzzleHttp\Exception\ClientException $e) {
-            if ($e->getResponse()->getStatusCode() === 409) {
-                throw \Illuminate\Validation\ValidationException::withMessages(['documents' => 'A file with this name already exists in the client folder.']);
-            }
-            throw $e;
-        } finally {
-            if (is_resource($stream)) {
-                fclose($stream);
-            }
+        if (!is_resource($stream)) {
+            throw new \RuntimeException('The uploaded document could not be read.');
         }
         $document = new Document();
         $document->user_id = $client->user_id;
@@ -224,10 +248,26 @@ class ClientFiles
         $document->size = $file->getSize();
         $document->is_public = $public;
         try {
-            ($entity ?? $client)->documents()->save($document);
-        } catch (\Throwable $e) {
-            $this->library->delete($path);
-            throw $e;
+            // Persist visibility first. A timeout can mean that File Browser stored
+            // the bytes even though the application never received its response.
+            if (!($entity ?? $client)->documents()->save($document)) {
+                throw new \RuntimeException('The document record could not be saved.');
+            }
+            try {
+                $this->library->upload($path, $stream);
+            } catch (\GuzzleHttp\Exception\ClientException $e) {
+                if ($e->getResponse()->getStatusCode() === 409) {
+                    // This attempt did not create the remote file. Remove only
+                    // its new reservation, leaving the pre-existing file intact.
+                    $document->forceDelete();
+                    throw \Illuminate\Validation\ValidationException::withMessages(['documents' => 'A file with this name already exists in the client folder.']);
+                }
+                throw $e;
+            }
+        } finally {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
         }
         $client->touch();
         return $document;

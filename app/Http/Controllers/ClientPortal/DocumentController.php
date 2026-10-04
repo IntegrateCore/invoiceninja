@@ -33,6 +33,11 @@ class DocumentController extends Controller
      */
     public function index()
     {
+        $client = auth()->guard('contact')->user()->client;
+        if (config('integratecore.enabled') && app(\App\Services\IntegrateCore\ClientFiles::class)->mapping($client)) {
+            $path = request()->validate(['path' => 'nullable|string|max:2048'])['path'] ?? '';
+            return render('documents.library', ['library' => app(\App\Services\IntegrateCore\DocumentLibrary::class)->listing($client, $path, true)]);
+        }
         return render('documents.index');
     }
 
@@ -41,6 +46,13 @@ class DocumentController extends Controller
      * @param Document $document
      * @return Factory|View
      */
+    public function libraryArchive()
+    {
+        $client = auth()->guard('contact')->user()->client;
+        $path = request()->validate(['path' => 'nullable|string|max:2048'])['path'] ?? '';
+        return app(\App\Services\IntegrateCore\DocumentLibrary::class)->archive($client, $path, true);
+    }
+
     public function show(ShowDocumentRequest $request, Document $document)
     {
         return render('documents.show', [
