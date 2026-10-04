@@ -201,6 +201,8 @@ Route::group(['middleware' => ['throttle:api', 'token_auth', 'valid_json','local
 
     Route::post('claim_license', [LicenseController::class, 'index'])->name('license.index');
     Route::post('check_license', [LicenseController::class, 'check'])->name('license.check');
+    Route::get('client-file-folders', [\App\Http\Controllers\IntegrateCore\ClientFilesController::class, 'allFolders']);
+    Route::put('client-file-folders', [\App\Http\Controllers\IntegrateCore\ClientFilesController::class, 'updateFolder']);
 
     Route::resource('clients', ClientController::class); // name = (clients. index / create / show / update / destroy / edit
     Route::put('clients/{client}/upload', [ClientController::class, 'upload'])->name('clients.upload');

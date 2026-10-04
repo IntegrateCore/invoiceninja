@@ -188,7 +188,7 @@ class FileLibrary
                 $chunk = $input->read(65536);
                 $bytes += strlen($chunk);
                 if ($maximumBytes !== null && $bytes > $maximumBytes) {
-                    throw new \RuntimeException('The document exceeds the download size limit.');
+                    throw new FileLibrarySizeException('The document exceeds the download size limit.');
                 }
                 while ($chunk !== '') {
                     $written = fwrite($output, $chunk);

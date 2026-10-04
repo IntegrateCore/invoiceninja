@@ -104,6 +104,8 @@ Route::group(['middleware' => ['auth:contact', 'locale', 'domain_db','check_clie
 
     Route::post('documents/download_multiple', [App\Http\Controllers\ClientPortal\DocumentController::class, 'downloadMultiple'])->name('documents.download_multiple');
     Route::get('document-library/archive', [App\Http\Controllers\ClientPortal\DocumentController::class, 'libraryArchive'])->name('document_library.archive');
+    Route::get('documents/{document}/preview/content', [App\Http\Controllers\ClientPortal\DocumentController::class, 'previewContent'])->name('documents.preview_content');
+    Route::get('documents/{document}/preview', [App\Http\Controllers\ClientPortal\DocumentController::class, 'preview'])->name('documents.preview');
     Route::get('documents/{document}/download', [App\Http\Controllers\ClientPortal\DocumentController::class, 'download'])->name('documents.download');
     Route::resource('documents', App\Http\Controllers\ClientPortal\DocumentController::class)->only(['index', 'show']);
 

@@ -30,7 +30,14 @@ class ShowDocumentRequest extends FormRequest
         $contact = auth()->guard('contact')->user();
         $document = $this->document;
 
-        if (! $document->is_public) {
+        if (! $contact || $document->company_id !== $contact->company_id || ! $document->is_public) {
+            return false;
+        }
+
+        // A client index cannot publish a private attachment at the same physical path.
+        if ($document->disk === 'integratecore' && $document->documentable_type === \App\Models\Client::class
+            && \App\Models\Document::withTrashed()->where('company_id', $document->company_id)
+                ->where('disk', 'integratecore')->where('url', $document->url)->where('is_public', false)->exists()) {
             return false;
         }
 

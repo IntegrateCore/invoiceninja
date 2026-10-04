@@ -60,6 +60,20 @@ class DocumentController extends Controller
         ]);
     }
 
+    public function preview(ShowDocumentRequest $request, Document $document, \App\Services\IntegrateCore\DocumentPreview $preview)
+    {
+        $path = $request->validate(['path' => 'nullable|string|max:2048'])['path'] ?? '';
+        abort_unless($path === '' || \App\Services\IntegrateCore\FileLibrary::visiblePath($path), 422);
+        return response(render('documents.preview', [
+            'document' => $document, 'preview' => $preview->describe($document), 'library_path' => $path,
+        ]))->header('Cache-Control', 'private, no-store')->header('X-Content-Type-Options', 'nosniff');
+    }
+
+    public function previewContent(ShowDocumentRequest $request, Document $document, \App\Services\IntegrateCore\DocumentPreview $preview)
+    {
+        return $preview->content($document);
+    }
+
     public function download(ShowDocumentRequest $request, Document $document)
     {
         if ($document->disk === 'integratecore') {

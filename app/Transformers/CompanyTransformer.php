@@ -46,6 +46,7 @@ use App\Models\BankIntegration;
 use App\Models\BankTransaction;
 use App\Models\ExpenseCategory;
 use App\Utils\Traits\MakesHash;
+use App\Services\IntegrateCore\ConsultingHours;
 use App\Models\RecurringExpense;
 use App\Models\RecurringInvoice;
 use App\Models\BankTransactionRule;
@@ -136,6 +137,7 @@ class CompanyTransformer extends EntityTransformer
             'enable_product_quantity' => (bool) $company->enable_product_quantity,
             'default_quantity' => (bool) $company->default_quantity,
             'custom_fields' => (object) $company->custom_fields ?? $std,
+            'consulting_hours_custom_field' => app(ConsultingHours::class)->mobileSlot($company) ?? 0,
             'size_id' => (string) $company->size_id ?: '',
             'industry_id' => (string) $company->industry_id ?: '',
             'first_month_of_year' => (string) $company->first_month_of_year ?: '1',

@@ -6377,6 +6377,10 @@ $lang = array(
     'tasks_over_estimate' => 'Tasks Over Estimate',
     'download_folder_zip' => 'Download folder as ZIP',
     'no_documents_in_folder' => 'No documents in this folder.',
+    'document_preview_too_large' => 'This file is larger than the 25 MB preview limit. Download it to view the full file.',
+    'document_preview_truncated' => 'Showing the first 1 MB. Download the file to read the rest.',
+    'document_preview_not_text' => 'This file cannot be displayed as text. Download it to view its contents.',
+    'document_preview_unavailable' => 'A preview is not available for this file. Download it to view its contents.',
 );
 
 return $lang;

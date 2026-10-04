@@ -31,11 +31,16 @@ const safeUrl = (value) => {
 };
 const observeNavigation = (page) => {
     page.on('response', (response) => {
-        if (!response.request().isNavigationRequest()) return;
+        const isArchive = new URL(response.url()).pathname.endsWith(
+            '/document-library/archive'
+        );
+        if (!response.request().isNavigationRequest() && !isArchive) return;
         const location = response.headers().location;
         navigation.push({
             status: response.status(),
             url: safeUrl(response.url()),
+            content_type: response.headers()['content-type'] || null,
+            folder: new URL(response.url()).searchParams.get('path'),
             redirect: location
                 ? safeUrl(new URL(location, response.url()).href)
                 : null,
@@ -89,11 +94,15 @@ try {
         .getByRole('button', { name: 'Project Docs', exact: true })
         .waitFor();
     report.push('Admin breadcrumb returns to library root');
-    const zipEvent = page.waitForEvent('download');
-    await page
-        .getByRole('button', { name: 'Download folder as ZIP', exact: true })
-        .click();
-    const zip = await zipEvent;
+    const [zip] = await Promise.all([
+        page.waitForEvent('download'),
+        page
+            .getByRole('button', {
+                name: 'Download folder as ZIP',
+                exact: true,
+            })
+            .click(),
+    ]);
     await zip.saveAs(artifactPath('admin-library.zip'));
     assert.match(zip.suggestedFilename(), /\.zip$/);
     report.push('Admin folder ZIP download completes');
@@ -135,6 +144,54 @@ try {
         path: artifactPath('portal-library.png'),
         fullPage: true,
     });
+    for (const colorScheme of ['light', 'dark']) {
+        await client.emulateMedia({ colorScheme });
+        const colors = await client
+            .locator('.ic-document-library')
+            .evaluate((library) => {
+                const header = library.querySelector('th');
+                const link = library.querySelector('tbody a');
+                const button = library.querySelector('.ic-library-zip');
+                return {
+                    background: getComputedStyle(library).backgroundColor,
+                    heading: getComputedStyle(header).color,
+                    link: getComputedStyle(link).color,
+                    buttonText: getComputedStyle(button).color,
+                    buttonBackground: getComputedStyle(button).backgroundColor,
+                };
+            });
+        assert.equal(colors.background, 'rgb(255, 255, 255)');
+        const luminance = (value) =>
+            value
+                .match(/[0-9.]+/g)
+                .slice(0, 3)
+                .map((component) => {
+                    const channel = Number(component) / 255;
+                    return channel <= 0.04045
+                        ? channel / 12.92
+                        : ((channel + 0.055) / 1.055) ** 2.4;
+                })
+                .reduce(
+                    (total, channel, index) =>
+                        total + channel * [0.2126, 0.7152, 0.0722][index],
+                    0
+                );
+        const contrast = (a, b) =>
+            (Math.max(luminance(a), luminance(b)) + 0.05) /
+            (Math.min(luminance(a), luminance(b)) + 0.05);
+        assert.ok(contrast(colors.heading, colors.background) >= 4.5);
+        assert.ok(contrast(colors.link, colors.background) >= 4.5);
+        assert.ok(contrast(colors.buttonText, colors.buttonBackground) >= 4.5);
+        report.push(
+            `Portal library remains readable with ${colorScheme} device preference`
+        );
+    }
+    await client.screenshot({
+        path: artifactPath('portal-library-device-dark.png'),
+        fullPage: true,
+    });
+    await client.emulateMedia({ colorScheme: 'light' });
+
     await client
         .getByRole('link', { name: 'Project Docs', exact: true })
         .click();
@@ -147,15 +204,23 @@ try {
         .locator('nav[aria-label="Documents"]')
         .getByRole('link', { name: 'Documents', exact: true })
         .click();
+    await client.waitForURL(
+        (target) =>
+            target.pathname === '/client/documents' &&
+            !target.searchParams.get('path')
+    );
+    await client.waitForLoadState('domcontentloaded');
     await client
+        .locator('table')
         .getByRole('link', { name: 'Project Docs', exact: true })
         .waitFor();
     report.push('Portal breadcrumb returns to root');
-    const clientZipEvent = client.waitForEvent('download');
-    await client
-        .getByRole('link', { name: 'Download folder as ZIP', exact: true })
-        .click();
-    const clientZip = await clientZipEvent;
+    const [clientZip] = await Promise.all([
+        client.waitForEvent('download'),
+        client
+            .getByRole('link', { name: 'Download folder as ZIP', exact: true })
+            .click(),
+    ]);
     await clientZip.saveAs(artifactPath('portal-library.zip'));
     report.push('Portal folder ZIP download completes');
     await client.setViewportSize({ width: 390, height: 844 });

@@ -16,8 +16,10 @@ class DocumentLibrary
         abort_unless($mapping, 404);
         $prefix = $mapping->folder . '/' . ($path === '' ? '' : $path . '/');
         return $this->files->clientDocuments($client)->where('disk', 'integratecore')
-            ->when($publicOnly, fn ($q) => $q->where('is_public', true))->get()
-            ->filter(fn ($doc) => FileLibrary::inside($doc->url, $mapping->folder) && str_starts_with($doc->url, $prefix));
+            ->get()->filter(fn ($doc) => FileLibrary::inside($doc->url, $mapping->folder) && str_starts_with($doc->url, $prefix))
+            ->groupBy('url')->map(fn ($documents) => $documents
+                ->sort(fn ($a, $b) => $a->is_public <=> $b->is_public ?: ($a->documentable_type === Client::class) <=> ($b->documentable_type === Client::class))->first())
+            ->filter(fn ($doc) => !$publicOnly || $doc->is_public)->values();
     }
 
     public function listing(Client $client, string $path, bool $publicOnly): array
