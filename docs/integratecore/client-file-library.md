@@ -53,6 +53,8 @@ php artisan integratecore:consulting-hours-mobile <numeric-company-id>
 
 Mobile setup reserves an unused standard client custom field labelled Time left (hours), without replacing existing custom-field labels or values. The computed value appears in the native client overview and configurable table mode; the stock native app's compact list cards have fixed fields. This does not replace the installed Flutter app with React. React remains available through the phone's web browser.
 
+Client lists, nested client includes, and native bootstrap responses load the owning company in batches so computing this field does not add one company query per client. Query-count regression tests cover both direct client lists and clients included in payment responses.
+
 An email is sent once when a funded client has at most 2 hours remaining. Refill above 2 re-arms the alert. Failed delivery remains pending for retry. Never-funded zero clients and cloned clients do not generate low-hours notifications. Dev uses `MAIL_MAILER=log`; messages are captured for review, not delivered externally. Production delivery requires enabling the feature with a working configured mail transport.
 
 ## Validation and rollback

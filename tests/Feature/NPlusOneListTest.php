@@ -152,6 +152,29 @@ class NPlusOneListTest extends TestCase
         });
     }
 
+    public function testClientListWithComputedMobileHoursNPlusOne(): void
+    {
+        $this->company->consulting_hours_custom_field = 1;
+        $this->company->custom_fields = (object) ['client1' => \App\Services\IntegrateCore\ConsultingHours::MOBILE_LABEL];
+        $this->company->saveQuietly();
+        $this->assertNoNPlusOne('clients', 'group_settings', function ($i) {
+            $client = Client::factory()->create([
+                'user_id' => $this->user->id, 'company_id' => $this->company->id,
+                'name' => "N+1 Mobile Hours {$i}", 'consulting_hours_balance' => 3.125, 'custom_value1' => '',
+            ]);
+            ClientContact::factory()->create([
+                'user_id' => $this->user->id, 'company_id' => $this->company->id,
+                'client_id' => $client->id, 'is_primary' => true,
+            ]);
+        });
+        $response = $this->withHeaders(['X-API-TOKEN' => $this->token, 'X-API-SECRET' => config('ninja.api_secret')])
+            ->getJson('/api/v1/clients?per_page=100');
+        $response->assertOk();
+        $clients = collect($response->json('data'))->filter(fn ($client) => str_starts_with($client['name'], 'N+1 Mobile Hours'));
+        $this->assertCount(10, $clients);
+        $this->assertTrue($clients->every(fn ($client) => $client['custom_value1'] === '3.125'));
+    }
+
     public function testInvoiceListNPlusOne(): void
     {
         $contact = ClientContact::query()
@@ -296,11 +319,16 @@ class NPlusOneListTest extends TestCase
 
     public function testPaymentListWithInvoiceClientNPlusOne(): void
     {
+        $this->company->consulting_hours_custom_field = 1;
+        $this->company->custom_fields = (object) ['client1' => \App\Services\IntegrateCore\ConsultingHours::MOBILE_LABEL];
+        $this->company->saveQuietly();
         $this->assertNoNPlusOne('payments', 'invoices.client', function ($i) {
             $client = Client::factory()->create([
                 'user_id' => $this->user->id,
                 'company_id' => $this->company->id,
                 'name' => "N+1 Payment Client {$i}",
+                'consulting_hours_balance' => 2.375,
+                'custom_value1' => '',
             ]);
 
             $contact = ClientContact::factory()->create([

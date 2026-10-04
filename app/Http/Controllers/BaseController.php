@@ -405,7 +405,7 @@ class BaseController extends Controller
                     $query->whereNotNull('updated_at')->with('documents', 'users');
                 },
                 'company.clients' => function ($query) use ($updated_at, $user) {
-                    $query->where('clients.updated_at', '>=', $updated_at)->with('locations', 'contacts.company', 'gateway_tokens', 'documents', 'tags');
+                    $query->where('clients.updated_at', '>=', $updated_at)->with('locations', 'contacts.company', 'gateway_tokens', 'documents', 'tags', 'company');
 
                     if (! $user->hasPermission('view_client')) {
                         $query->whereNested(function ($query) use ($user) {
@@ -783,7 +783,7 @@ class BaseController extends Controller
                     $query->whereNotNull('created_at')->with('documents', 'users');
                 },
                 'company.clients' => function ($query) use ($created_at, $user) {
-                    $query->where('clients.created_at', '>=', $created_at)->with('contacts.company', 'gateway_tokens', 'documents', 'tags');
+                    $query->where('clients.created_at', '>=', $created_at)->with('contacts.company', 'gateway_tokens', 'documents', 'tags', 'company');
 
                     if (! $user->hasPermission('view_client')) {
                         $query->whereNested(function ($query) use ($user) {
@@ -1094,6 +1094,14 @@ class BaseController extends Controller
 
             $eager_loads[] = $this->eagerLoadIncludePath($include);
             array_push($eager_loads, ...$this->tagIncludePaths($include));
+            // ClientTransformer's computed mobile field needs the owning company,
+            // including clients nested under invoices, payments, and other lists.
+            $segments = explode('.', $include);
+            foreach ($segments as $index => $segment) {
+                if ($segment === 'client' || $segment === 'clients') {
+                    $eager_loads[] = $this->eagerLoadIncludePath(implode('.', array_slice($segments, 0, $index + 1))) . '.company';
+                }
+            }
         }
 
         return array_values(array_unique($eager_loads));

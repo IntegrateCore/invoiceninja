@@ -97,7 +97,7 @@ class ClientController extends BaseController
     {
         set_time_limit(45);
 
-        $clients = Client::filter($filters)->with('tags');
+        $clients = Client::filter($filters)->with(['tags', 'company']);
 
         return $this->listResponse($clients);
     }
