@@ -88,6 +88,9 @@ if ($operation === 'create') {
         $query->where('is_owner', true)->orWhere('is_admin', true);
     })->orderBy('is_owner', 'desc')->orderBy('id')->first(['user_id']);
     if (!$admin) throw new RuntimeException('[QA] An existing administrator is required.');
+    if (DB::table('company_user')->where('user_id', $admin->user_id)->where('company_id', '!=', $companyId)->exists()) {
+        throw new RuntimeException('[QA] Verification requires an administrator with only this company membership.');
+    }
     // Snapshot all balances before any token/contact writes. No balances are changed.
     $ledger = ['run' => $run, 'company_id' => $companyId, 'account_id' => (int) $company->account_id,
         'user_id' => (int) $admin->user_id, 'balance_snapshot' => $balances(), 'mapping_snapshot' => $mappingSnapshot(),

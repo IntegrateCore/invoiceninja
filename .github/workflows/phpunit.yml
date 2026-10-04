@@ -134,7 +134,6 @@ jobs:
   
     - name: Run Testsuite
       run: |
-        cat .env
         vendor/bin/snappdf download
         tests/ci
       env:

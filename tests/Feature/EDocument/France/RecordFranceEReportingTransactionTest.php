@@ -93,6 +93,7 @@ class RecordFranceEReportingTransactionTest extends TestCase
 
     public function test_scope_invalidation_discovers_untouched_documents_when_reporting_is_enabled(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-09-16 12:00:00', 'Europe/Paris'));
         $invoice = $this->makeInvoice('FR', 'individual');
         Bus::fake();
 
