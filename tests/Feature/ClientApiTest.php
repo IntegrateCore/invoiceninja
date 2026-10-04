@@ -25,6 +25,7 @@ use App\Models\GroupSetting;
 use App\Models\User;
 use App\Repositories\ClientContactRepository;
 use App\Repositories\ClientRepository;
+use App\Services\IntegrateCore\ConsultingHours;
 use App\Utils\Number;
 use App\Utils\Traits\ClientGroupSettingsSaver;
 use App\Utils\Traits\MakesHash;
@@ -541,6 +542,34 @@ class ClientApiTest extends TestCase
         $this->assertArrayHasKey('name', $first);
         $this->assertArrayHasKey('number', $first);
         $this->assertArrayHasKey('id_number', $first);
+    }
+
+    public function testFilterDetailsWithConfiguredMobileHoursPreservesProjection(): void
+    {
+        $this->company->consulting_hours_custom_field = 1;
+        $custom_fields = (object) $this->company->custom_fields;
+        $custom_fields->client1 = ConsultingHours::MOBILE_LABEL;
+        $this->company->custom_fields = $custom_fields;
+        $this->company->saveQuietly();
+        $this->client->consulting_hours_balance = 3.125;
+        $this->client->custom_value1 = '';
+        $this->client->saveQuietly();
+
+        $data = $this->withHeaders(['X-API-TOKEN' => $this->token])
+            ->getJson('/api/v1/clients?filter_details=true&per_page=5')
+            ->assertStatus(200)
+            ->json('data');
+
+        $this->assertNotEmpty($data);
+        $this->assertContains($this->client->hashed_id, array_column($data, 'id'));
+        foreach ($data as $client) {
+            $this->assertArrayHasKey('id', $client);
+            $this->assertArrayHasKey('name', $client);
+            $this->assertArrayHasKey('number', $client);
+            $this->assertArrayHasKey('id_number', $client);
+            $this->assertSame('', $client['custom_value1']);
+        }
+        $this->assertSame(3.125, (float) $this->client->fresh()->consulting_hours_balance);
     }
 
     public function testCurrencyCodePassesValidation()

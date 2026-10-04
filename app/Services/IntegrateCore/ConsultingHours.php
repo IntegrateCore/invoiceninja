@@ -56,11 +56,11 @@ class ConsultingHours
     public function mobileValue(Client $client, int $slot): string
     {
         $stored = (string) ($client->getAttribute("custom_value{$slot}") ?? '');
-        if ($this->mobileSlot($client->company) !== $slot || $stored !== '') {
+        if (!array_key_exists('consulting_hours_balance', $client->getAttributes())) {
             return $stored;
         }
-        if (!array_key_exists('consulting_hours_balance', $client->getAttributes())) {
-            return '';
+        if ($this->mobileSlot($client->company) !== $slot || $stored !== '') {
+            return $stored;
         }
         return rtrim(rtrim(number_format((float) $client->consulting_hours_balance, 6, '.', ''), '0'), '.');
     }

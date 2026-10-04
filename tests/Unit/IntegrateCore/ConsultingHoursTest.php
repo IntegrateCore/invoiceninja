@@ -140,6 +140,21 @@ class ConsultingHoursTest extends TestCase
         $this->assertSame($input, $hours->stripComputedInput($input, $company));
     }
 
+    public function testProjectedClientPreservesStoredFieldsWithoutLoadingCompany(): void
+    {
+        $client = new Client();
+        $client->setRawAttributes(['id' => 1, 'custom_value1' => 'Stored value']);
+        $hours = new ConsultingHours();
+
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        $this->assertSame('Stored value', $hours->mobileValue($client, 1));
+        $this->assertSame('', $hours->mobileValue($client, 2));
+        $this->assertFalse($client->relationLoaded('company'));
+        $this->assertSame([], DB::getQueryLog());
+        DB::disableQueryLog();
+    }
+
     public function testSenderUsesConfiguredMailTransportWithoutSendingRealEmail(): void
     {
         $company = new Company();
