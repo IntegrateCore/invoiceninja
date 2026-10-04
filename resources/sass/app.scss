@@ -18,6 +18,7 @@
 @import 'components/alerts';
 @import 'components/badge';
 @import 'components/datatables';
+@import 'components/payment-methods';
 
 .pagination {
     @apply flex items-center #{!important};

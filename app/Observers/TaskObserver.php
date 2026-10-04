@@ -32,6 +32,8 @@ class TaskObserver
         $this->syncConsultingHoursBalance($task);
 
         $subscriptions = Webhook::where('company_id', $task->company_id)
+                        ->where('is_deleted', false)
+                        ->whereNull('deleted_at')
                         ->where('event_id', Webhook::EVENT_CREATE_TASK)
                         ->exists();
 
@@ -61,6 +63,8 @@ class TaskObserver
         }
 
         $subscriptions = Webhook::where('company_id', $task->company_id)
+                                    ->where('is_deleted', false)
+                                    ->whereNull('deleted_at')
                                     ->where('event_id', $event)
                                     ->exists();
 
@@ -82,6 +86,8 @@ class TaskObserver
         }
 
         $subscriptions = Webhook::where('company_id', $task->company_id)
+                        ->where('is_deleted', false)
+                        ->whereNull('deleted_at')
                         ->where('event_id', Webhook::EVENT_ARCHIVE_TASK)
                         ->exists();
 

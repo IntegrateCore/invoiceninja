@@ -27,6 +27,7 @@ _ide_helper.php
 /public/logo
 .env.dusk.local
 .env.cypress
+.env.playwright
 /public/vendors/*
 *.log
 temp_root.html
@@ -39,6 +40,12 @@ public/images/client-portal-waves.jpg
 public/rsms/
 public/tinymce_6.4.2/
 public/tinymce_7.9.3/
+
+# Playwright
+/tests/e2e/report/
+/tests/e2e/test-results/
+/playwright-report/
+/test-results/
 
 # Ignore local migrations
 storage/migrations
@@ -54,6 +61,8 @@ mysql/
 backups/
 .tx/
 .phpunit.cache
+
+# AI tool files
 CLAUDE.md
 boost.json
 AGENTS.md
@@ -63,3 +72,9 @@ junie/
 .codex/
 .cursor/
 .mcp.json
+
+# Playwright
+node_modules/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

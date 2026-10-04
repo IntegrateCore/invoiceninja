@@ -15,6 +15,8 @@ return [
 
     'default' => env('FILESYSTEM_DISK', 'public'),
 
+    'protected_download_disk' => env('PROTECTED_DOWNLOAD_DISK', 'local'),
+
     'cloud' => env('FILESYSTEM_CLOUD', 's3'),
 
     /*
@@ -61,6 +63,24 @@ return [
                     'private' => 0700,
                 ],
             ],
+            'throw' => false,
+        ],
+
+        'debian_docker' => [
+            'driver' => 'local',
+            'root' => storage_path('app/public'),
+            'url' => env('APP_URL').'/storage',
+            'permissions' => [
+                'file' => [
+                    'public' => 0664,
+                    'private' => 0600,
+                ],
+                'dir' => [
+                    'public' => 0775,
+                    'private' => 0700,
+                ],
+            ],
+            'visibility' => 'public',
             'throw' => false,
         ],
 
@@ -160,5 +180,7 @@ return [
     'links' => [
         public_path('storage') => storage_path('app/public'),
     ],
+
+    'protected_download_allow_unsigned' => env('PROTECTED_DOWNLOAD_ALLOW_UNSIGNED', false),
 
 ];
