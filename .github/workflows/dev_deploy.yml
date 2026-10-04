@@ -20,6 +20,19 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Setup PHP for portal dependencies
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: bcmath, gd, imagick, intl, mbstring, pdo_mysql, soap, zip
+          tools: composer:v2
+          coverage: none
+
+      - name: Install portal PHP dependencies
+        env:
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.GITHUB_TOKEN }}"}}'
+        run: composer install --no-dev --no-scripts --no-interaction --no-progress --prefer-dist
+
       - name: Build client portal assets
         run: |
           CYPRESS_INSTALL_BINARY=0 npm ci
