@@ -17,7 +17,8 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 set_exception_handler(static function (Throwable $error) {
-    $message = str_starts_with($error->getMessage(), '[QA] ') ? $error->getMessage() : 'Production verification stopped: ' . get_class($error);
+    $message = str_starts_with($error->getMessage(), '[QA] ') ? $error->getMessage()
+        : 'Production verification stopped: ' . get_class($error) . ' at ' . basename($error->getFile()) . ':' . $error->getLine();
     fwrite(STDERR, $message . PHP_EOL);
     exit(1);
 });
@@ -66,7 +67,19 @@ if ($operation === 'create') {
         || data_get($company->custom_fields, 'client1') !== 'Time left (hours)') {
         throw new RuntimeException('[QA] Production migrations and company 1 mobile setup must finish first.');
     }
-    $expectedFolders = [7 => 'Ari Miller - FundMax', 6 => 'Ronnie Pollack - Golf Net'];
+    $expectedFolders = json_decode((string) getenv('IC_QA_EXPECTED_FOLDERS'), true, 512, JSON_THROW_ON_ERROR);
+    if (!is_array($expectedFolders) || count($expectedFolders) !== 2
+        || !array_key_exists(7, $expectedFolders) || !array_key_exists(6, $expectedFolders)) {
+        throw new RuntimeException('[QA] Private expected-folder configuration must contain exactly client IDs 7 and 6.');
+    }
+    foreach ($expectedFolders as $folder) {
+        if (!is_string($folder) || strlen($folder) > 191 || str_contains($folder, '/') || !FileLibrary::visiblePath($folder)) {
+            throw new RuntimeException('[QA] Private expected-folder configuration contains an invalid folder.');
+        }
+    }
+    if ($expectedFolders[7] === $expectedFolders[6]) {
+        throw new RuntimeException('[QA] Production verification clients must have separate folders.');
+    }
     foreach ($expectedFolders as $id => $folder) {
         if ($files->mapping($clients[$id])?->folder !== $folder) throw new RuntimeException('[QA] Production folder ownership differs from the planned rollout.');
     }
@@ -91,7 +104,7 @@ if ($operation === 'create') {
             'documents' => $visible->map(fn ($document) => $describeDocument($document, $id))->values()->all()];
     }
     $saveLedger($ledger);
-    \Illuminate\Database\Eloquent\Model::withoutEvents(fn () => DB::transaction(function () use (&$ledger, $clients, $prefix, $companyId, $saveLedger) {
+    \Illuminate\Database\Eloquent\Model::withoutEvents(fn () => DB::transaction(function () use (&$ledger, $clients, $prefix, $companyId, $saveLedger, $run) {
         $token = new CompanyToken();
         $token->company_id = $companyId;
         $token->account_id = $ledger['account_id'];
@@ -119,6 +132,8 @@ if ($operation === 'create') {
             $saveLedger($ledger);
         }
     }));
+    // The enclosing arrow closure captures its ledger by value; use its final durable checkpoint.
+    $ledger = json_decode(file_get_contents($ledgerPath), true, 512, JSON_THROW_ON_ERROR);
     echo json_encode($ledger, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR), PHP_EOL;
     exit;
 }

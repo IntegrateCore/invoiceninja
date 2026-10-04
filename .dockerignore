@@ -12,4 +12,5 @@ node_modules/
 public/storage/
 public/hot
 coverage/
+bootstrap/cache/*.php
 *.log

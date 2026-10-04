@@ -40,7 +40,7 @@ try {
             check(!str_starts_with($doc['name'],'.') && !str_contains($doc['name'],'/.'),'Mobile list excludes hidden files');
         }
     }
-    $response=$http->put('/api/v1/clients/'.$ronnie->hashed_id.'/file-library',['json'=>['folder'=>'../Ari Miller - FundMax']]);
+    $response=$http->put('/api/v1/clients/'.$ronnie->hashed_id.'/file-library',['json'=>['folder'=>'../other-client-folder']]);
     check($response->getStatusCode()===422,'Folder traversal is rejected');
     $contents="IntegrateCore dev integration test\n";
     $name='Integration verification '.bin2hex(random_bytes(6)).'.txt';

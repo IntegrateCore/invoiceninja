@@ -102,6 +102,11 @@ jobs:
             cp docker-compose.yml "$backup_directory/docker-compose.before.yml"
             cp .env "$backup_directory/env.before"
             docker exec invoiceninja-mysql-1 sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -uroot --single-transaction "$MYSQL_DATABASE"' > "$backup_directory/database-before.sql"
+            available_kib=$(df -Pk / | awk 'NR == 2 {print $4}')
+            if [ "$available_kib" -lt 6291456 ]; then
+              echo 'At least 6 GiB of free root-disk space is required before pulling a production image.' >&2
+              exit 1
+            fi
             previous_image=$(docker inspect --format='{{.Image}}' invoiceninja-invoiceninja-1)
             docker tag "$previous_image" "integratecore/invoiceninja:rollback-$release_id"
 

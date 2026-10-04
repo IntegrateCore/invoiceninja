@@ -1,0 +1,12 @@
+# Optional production networking: keep the default application/DB network and
+# join the existing private network where File Browser has integratecore-files DNS.
+services:
+  invoiceninja:
+    networks:
+      - default
+      - integratecore_files
+
+networks:
+  integratecore_files:
+    external: true
+    name: ${INTEGRATECORE_FILES_NETWORK:?Set the existing private File Browser network name}

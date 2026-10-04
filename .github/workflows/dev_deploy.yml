@@ -52,7 +52,7 @@ jobs:
           npm ci
           npm run build
           cp -r dist/* ../public/
-          mv ../public/index.html ../resources/views/react/index.blade.php
+          # Keep the built public index for the shared React Blade shell.
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

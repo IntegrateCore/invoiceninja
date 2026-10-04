@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 const base = process.env.QA_URL || 'https://portal.integratecore.net';
 assert.equal(new URL(base).origin, 'https://portal.integratecore.net');
+const adminBase = process.env.QA_ADMIN_URL || 'https://admin.integratecore.net';
+assert.equal(new URL(adminBase).origin, 'https://admin.integratecore.net');
 const local = fileURLToPath(
     new URL('../.local/client-files/', import.meta.url)
 );
@@ -46,12 +48,21 @@ const blockedWrites = [];
 const readOnly = async (route) => {
     const candidate = route.request();
     const url = new URL(candidate.url());
+    if (url.pathname === '/cdn-cgi/rum') {
+        await route.abort();
+        return;
+    }
     const allowedReadPost =
         candidate.method() === 'POST' &&
         (/^\/api\/v1\/clients\/[^/]+\/documents$/.test(url.pathname) ||
+            [
+                '/api/v1/refresh',
+                '/api/v1/refresh_react',
+                '/api/v1/search',
+            ].includes(url.pathname) ||
             url.pathname === '/client/documents/download_multiple');
     if (
-        url.origin === base &&
+        [base, adminBase].includes(url.origin) &&
         !['GET', 'HEAD', 'OPTIONS'].includes(candidate.method()) &&
         !allowedReadPost
     ) {
@@ -81,7 +92,10 @@ await admin.addInitScript(
     ({ token }) => {
         if (
             window === window.top &&
-            location.origin === 'https://portal.integratecore.net'
+            [
+                'https://portal.integratecore.net',
+                'https://admin.integratecore.net',
+            ].includes(location.origin)
         )
             localStorage?.setItem('X-NINJA-TOKEN', token);
     },
@@ -91,7 +105,10 @@ const page = await admin.newPage();
 page.on('pageerror', (error) => pageErrors.push(redact(error.message)));
 const portals = [];
 const sameIds = (actual, expected) =>
-    assert.deepEqual([...actual].sort(), [...expected].sort());
+    assert.ok(
+        [...actual].sort().join(',') === [...expected].sort().join(','),
+        `Document ID sets differ (${actual.length} returned, ${expected.length} expected)`
+    );
 const getData = async (url) => {
     const response = await api.get(url);
     assert.equal(response.status(), 200, url);
@@ -203,15 +220,20 @@ try {
                 client.native_document_ids
             );
         }
-        const nativeResponse = await api.post(
-            `/api/v1/clients/${client.id}/documents`,
-            { data: {} }
-        );
-        assert.equal(nativeResponse.status(), 200);
-        sameIds(
-            (await nativeResponse.json()).data.map((document) => document.id),
-            client.native_document_ids
-        );
+        const nativeIds = [];
+        for (let currentPage = 1; currentPage <= 20; currentPage++) {
+            const nativeResponse = await api.post(
+                `/api/v1/clients/${client.id}/documents?per_page=100&page=${currentPage}`,
+                { data: {} }
+            );
+            assert.equal(nativeResponse.status(), 200);
+            const native = await nativeResponse.json();
+            nativeIds.push(...native.data.map((document) => document.id));
+            const pages = native.meta?.pagination?.total_pages;
+            if (pages ? currentPage >= pages : native.data.length < 100) break;
+            assert.ok(currentPage < 20, 'Limit production document pagination');
+        }
+        sameIds(nativeIds, client.native_document_ids);
         if (client.folder)
             sameIds(await walkAdmin(client), client.native_document_ids);
         else
@@ -227,7 +249,7 @@ try {
     );
 
     stage = 'administrator browser';
-    await page.goto(`${base}/clients`);
+    await page.goto(`${adminBase}/clients`);
     await page
         .getByRole('columnheader', { name: 'Time left (hours)', exact: true })
         .waitFor({ timeout: 60000 });
@@ -248,6 +270,7 @@ try {
         exact: true,
     });
     await manager.waitFor();
+    await manager.getByText(catalog.data[0].folder, { exact: true }).waitFor();
     assert.equal(await manager.locator('tbody tr').count(), 2);
     for (const assignment of catalog.data) {
         const row = manager
@@ -278,7 +301,7 @@ try {
         fullPage: true,
     });
     await manager.getByRole('button', { name: 'Close', exact: true }).click();
-    await page.goto(`${base}/clients/${session.clients[0].id}`);
+    await page.goto(`${adminBase}/clients/${session.clients[0].id}`);
     const details = page.getByText('Details', { exact: true });
     await details.waitFor();
     const card = details.locator(
@@ -447,17 +470,26 @@ try {
         '../',
         '..\\',
         '/etc/passwd',
-        '../Ronnie Pollack - Golf Net',
+        '../other-client-folder',
         '.DS_Store',
     ];
     for (const candidate of traversal) {
         for (const portal of portals) {
-            deny(
-                await portal.context.request.get(
-                    `${base}/client/documents?path=${encodeURIComponent(candidate)}`
-                ),
-                'Portal path traversal'
+            const listingResponse = await portal.context.request.get(
+                `${base}/client/documents?path=${encodeURIComponent(candidate)}`
             );
+            if (portal.client.folder) {
+                deny(listingResponse, 'Mapped portal path traversal');
+            } else {
+                assert.equal(listingResponse.status(), 200);
+                const empty = await listingResponse.text();
+                assert.ok(empty.includes('class="ic-library-empty"'));
+                assert.ok(
+                    !/href="[^"]*\/client\/documents\/[^/"?]+\/(preview|download)/.test(
+                        empty
+                    )
+                );
+            }
             deny(
                 await portal.context.request.get(
                     `${base}/client/document-library/archive?path=${encodeURIComponent(candidate)}`
