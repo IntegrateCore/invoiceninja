@@ -34,6 +34,10 @@ class IntegrateCoreDocumentPreviewTest extends TestCase
             $table->id(); $table->integer('company_id'); $table->string('disk'); $table->string('url');
             $table->boolean('is_public'); $table->softDeletes();
         });
+        Schema::create('client_file_folders', function (Blueprint $table) {
+            $table->id(); $table->integer('company_id'); $table->integer('client_id'); $table->string('folder');
+        });
+        DB::table('client_file_folders')->insert(['company_id' => 1, 'client_id' => 7, 'folder' => 'Client']);
         Schema::create('client_contacts', function (Blueprint $table) {
             $table->id(); $table->integer('client_id'); $table->integer('company_id');
             $table->string('email'); $table->softDeletes(); $table->nullableTimestamps();

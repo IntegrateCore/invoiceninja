@@ -487,7 +487,14 @@ class ClientController extends BaseController
 
         $this->entity_transformer = DocumentTransformer::class;
 
-        $documents = app(\App\Services\IntegrateCore\ClientFiles::class)->clientDocuments($client)
+        $files = app(\App\Services\IntegrateCore\ClientFiles::class);
+        $documents = $files->clientDocuments($client);
+        if (config('integratecore.enabled')) {
+            $ids = $files->mapping($client)
+                ? app(\App\Services\IntegrateCore\DocumentLibrary::class)->documents($client, '', false)->pluck('id') : [];
+            $documents->whereIn('id', $ids);
+        }
+        $documents = $documents
             ->when(strlen($request->input('filter') ?? '') > 1, function ($query) use ($request) {
                 $query->where('name', 'like', '%' . $request->input('filter', '') . '%');
             })

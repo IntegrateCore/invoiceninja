@@ -6,6 +6,10 @@ on:
       - main
       - v5-stable
 
+concurrency:
+  group: invoiceninja-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -21,6 +25,11 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Build client portal assets
+        run: |
+          CYPRESS_INSTALL_BINARY=0 npm ci
+          npm run build
+
       - name: Prepare React FrontEnd
         run: |
           git clone https://github.com/IntegrateCore/invoiceninja-ui.git
@@ -31,10 +40,10 @@ jobs:
 
           cp .env.example .env
           cp ../vite.config.ts.react ./vite.config.js
-          npm i
+          npm ci
           npm run build
           cp -r dist/* ../public/
-          mv ../public/index.html ../resources/views/react/index.blade.php
+          # The React Blade shell reads the built public index head at runtime.
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -51,7 +60,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/integratecore/invoiceninja:latest
+          tags: |
+            ghcr.io/integratecore/invoiceninja:latest
+            ghcr.io/integratecore/invoiceninja:${{ github.sha }}
 
       - name: Load SSH key
         uses: webfactory/ssh-agent@v0.9.0
@@ -69,32 +80,36 @@ jobs:
           ssh -o ServerAliveInterval=60 -o ServerAliveCountMax=10 -p "${{ secrets.DEPLOY_SSH_PORT }}" "${{ secrets.DEPLOY_SSH_USER }}@${{ secrets.DEPLOY_SSH_HOST }}" bash -se <<'EOF'
             set -e
 
-            pre_prune_docker() {
-              docker compose down --remove-orphans || true
-              docker system prune -af --volumes || true
-              docker builder prune -af || true
-              docker image prune -af || true
-              docker volume prune -f || true
-            }
-
-            post_prune_docker() {
-              docker system prune -af --volumes || true
-              docker builder prune -af || true
-              docker image prune -af || true
-              docker volume prune -f || true
-            }
-
             cd /srv/invoiceninja
-
-            pre_prune_docker
+            umask 077
+            release_id='${{ github.sha }}'
+            backup_directory="/srv/invoiceninja/releases/$release_id"
+            mkdir -p "$backup_directory"
+            chmod 700 "$backup_directory"
+            cp docker-compose.yml "$backup_directory/docker-compose.before.yml"
+            cp .env "$backup_directory/env.before"
+            docker exec invoiceninja-mysql-1 sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -uroot --single-transaction "$MYSQL_DATABASE"' > "$backup_directory/database-before.sql"
+            previous_image=$(docker inspect --format='{{.Image}}' invoiceninja-invoiceninja-1)
+            docker tag "$previous_image" "integratecore/invoiceninja:rollback-$release_id"
 
             GHCR_TOKEN='${{ secrets.GITHUB_TOKEN }}'
             printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-            docker pull ghcr.io/integratecore/invoiceninja:latest
-            docker compose up -d
-
-            post_prune_docker
+            docker pull "ghcr.io/integratecore/invoiceninja:$release_id"
+            docker tag "ghcr.io/integratecore/invoiceninja:$release_id" ghcr.io/integratecore/invoiceninja:latest
+            docker compose up -d --no-deps invoiceninja
+            healthy=false
+            for attempt in $(seq 1 60); do
+              if docker exec invoiceninja-invoiceninja-1 curl -fsS http://127.0.0.1/health > /dev/null 2>&1; then
+                healthy=true
+                break
+              fi
+              sleep 3
+            done
+            if [ "$healthy" != true ]; then
+              echo 'Invoice Ninja did not become healthy; rollback image and database backup retained.' >&2
+              exit 1
+            fi
 
             df -h /
           EOF

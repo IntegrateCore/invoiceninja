@@ -190,4 +190,142 @@ class IntegrateCoreFolderPointerTest extends TestCase
         $this->document('F/invoice.txt', false, 10, Invoice::class);
         self::assertFalse($request->authorize());
     }
+
+    public function test_bulk_download_shares_private_alias_and_current_pointer_authorization(): void
+    {
+        $contact = $this->portalContact();
+        $alias = $this->document('F/invoice.txt', true);
+        $request = new \App\Http\Requests\ClientPortal\Documents\DownloadMultipleDocumentsRequest();
+        $request->merge(['file_hash' => [$alias->hashed_id]]);
+        self::assertTrue($request->authorize());
+        $private = $this->document('F/invoice.txt', false, 10, Invoice::class);
+        self::assertFalse($request->authorize());
+        $private->forceDelete();
+        ClientFileFolder::where('client_id', 1)->update(['folder' => 'H']);
+        self::assertFalse($request->authorize());
+        $single = new \App\Http\Requests\ClientPortal\Documents\ShowDocumentRequest();
+        self::assertFalse($single->contactCanAccessDocument($contact, $alias));
+        $alias->url = 'H/.hidden.txt'; $alias->save(); self::assertFalse($request->authorize());
+        $alias->url = 'H/visible.txt'; $alias->save(); self::assertTrue($request->authorize());
+    }
+
+    public function test_public_company_document_keeps_single_and_bulk_access_when_integration_disabled(): void
+    {
+        config(['integratecore.enabled' => false]); $contact = $this->portalContact();
+        $company = $this->document('company.txt', true, 1, \App\Models\Company::class);
+        $company->disk = 'local'; $company->save();
+        self::assertTrue((new \App\Http\Requests\ClientPortal\Documents\ShowDocumentRequest())->contactCanAccessDocument($contact, $company));
+        $bulk = new \App\Http\Requests\ClientPortal\Documents\DownloadMultipleDocumentsRequest();
+        $bulk->merge(['file_hash' => [$company->hashed_id]]); self::assertTrue($bulk->authorize());
+        $company->is_public = false; $company->save(); self::assertFalse($bulk->authorize());
+    }
+
+    public function test_direct_local_client_files_require_migration_while_integration_enabled(): void
+    {
+        $contact = $this->portalContact(); $local = $this->document('original.txt', true);
+        $local->disk = 'local'; $local->save();
+        $single = new \App\Http\Requests\ClientPortal\Documents\ShowDocumentRequest();
+        $bulk = new \App\Http\Requests\ClientPortal\Documents\DownloadMultipleDocumentsRequest();
+        $bulk->merge(['file_hash' => [$local->hashed_id]]);
+        self::assertFalse($single->contactCanAccessDocument($contact, $local)); self::assertFalse($bulk->authorize());
+        config(['integratecore.enabled' => false]);
+        self::assertTrue($single->contactCanAccessDocument($contact, $local)); self::assertTrue($bulk->authorize());
+    }
+
+    public function test_unassigned_portal_index_is_empty_library_and_disabled_index_keeps_legacy_view(): void
+    {
+        $this->portalContact(); $this->app->instance(ClientFiles::class, $this->files);
+        $this->files->changeFolder(1, 'F', null);
+        $controller = new \App\Http\Controllers\ClientPortal\DocumentController();
+        $view = $controller->index();
+        self::assertSame('portal.ninja2020.documents.library', $view->name());
+        self::assertSame(['folder' => null, 'path' => '', 'entries' => []], $view->getData()['library']);
+        config(['integratecore.enabled' => false]);
+        self::assertSame('portal.ninja2020.documents.index', $controller->index()->name());
+    }
+
+    public function test_native_client_include_and_client_document_endpoint_only_list_selected_folder(): void
+    {
+        $user = $this->createMock(\App\Models\User::class);
+        $user->method('companyId')->willReturn(1); $user->method('can')->willReturn(true);
+        auth()->setUser($user);
+        $selected = $this->document('F/selected.txt', true);
+        $oldInvoice = $this->document('G/invoice.txt', true, 10, Invoice::class);
+        $local = $this->document('original.txt', true); $local->disk = 'local'; $local->save();
+        $this->document('F/.hidden.txt', true); $this->document('F Extra/unrelated.txt', true);
+        $this->storage->paths = ['F/selected.txt'];
+        $this->app->instance(ClientFiles::class, $this->files);
+        $this->app->instance(DocumentLibrary::class, new DocumentLibrary($this->files, $this->storage));
+        $transformer = new \App\Transformers\ClientTransformer();
+        self::assertSame([$selected->id], $transformer->includeDocuments($this->a)->getData()->pluck('id')->all());
+        $filter = new \App\Filters\DocumentFilters(new \Illuminate\Http\Request());
+        $queryProperty = new \ReflectionProperty(\App\Filters\QueryFilters::class, 'builder');
+        $queryProperty->setValue($filter, Document::query());
+        self::assertSame([$selected->id], $filter->client_id($this->a->hashed_id)->pluck('id')->all());
+        $controller = new class extends \App\Http\Controllers\ClientController {
+            public function __construct() {}
+            protected function listResponse(\Illuminate\Database\Eloquent\Builder $query) { return $query->pluck('id')->all(); }
+        };
+        self::assertSame([$selected->id], $controller->documents(new \App\Http\Requests\Client\ClientDocumentsRequest(), $this->a));
+        ClientFileFolder::where('client_id', 1)->delete();
+        self::assertSame([], $transformer->includeDocuments($this->a)->getData()->all());
+        self::assertSame([], $controller->documents(new \App\Http\Requests\Client\ClientDocumentsRequest(), $this->a));
+        $queryProperty->setValue($filter, Document::query());
+        self::assertSame([], $filter->client_id($this->a->hashed_id)->pluck('id')->all());
+        config(['integratecore.enabled' => false]); $this->a->unsetRelation('documents');
+        self::assertContains($local->id, $transformer->includeDocuments($this->a)->getData()->pluck('id')->all());
+        self::assertContains($oldInvoice->id, $controller->documents(new \App\Http\Requests\Client\ClientDocumentsRequest(), $this->a));
+        foreach (['quotes', 'credits', 'expenses', 'payments', 'tasks', 'recurring_expenses', 'recurring_invoices', 'projects'] as $table) {
+            Schema::create($table, function (Blueprint $t) { $t->id(); $t->integer('client_id'); $t->softDeletes(); });
+        }
+        $oldInvoice->documentable_type = (new Invoice())->getMorphClass(); $oldInvoice->save();
+        $queryProperty->setValue($filter, Document::query());
+        $legacy = $filter->client_id($this->a->hashed_id)->pluck('id')->all();
+        self::assertContains($local->id, $legacy); self::assertContains($oldInvoice->id, $legacy);
+    }
+
+    public function test_public_entity_attachment_stays_authorized_after_pointer_transfer(): void
+    {
+        $contact = $this->portalContact();
+        $original = $this->document('F/invoice.txt', true, 10, Invoice::class);
+        $this->storage->paths = ['F/invoice.txt']; $this->files->assign($this->b, 'F');
+        self::assertTrue((new \App\Http\Requests\ClientPortal\Documents\ShowDocumentRequest())->contactCanAccessDocument($contact, $original));
+        self::assertSame('F/invoice.txt', $this->files->path($original));
+        $bulk = new \App\Http\Requests\ClientPortal\Documents\DownloadMultipleDocumentsRequest();
+        $bulk->merge(['file_hash' => [$original->hashed_id]]); self::assertTrue($bulk->authorize());
+    }
+
+    public function test_native_document_filter_never_syncs_foreign_company_or_forbidden_clients(): void
+    {
+        DB::table('clients')->insert(['id' => 3, 'company_id' => 2, 'user_id' => 1, 'name' => 'Foreign']);
+        ClientFileFolder::create(['company_id' => 2, 'client_id' => 3, 'folder' => 'Foreign']);
+        $user = $this->createMock(\App\Models\User::class);
+        $user->method('companyId')->willReturn(1);
+        $user->expects(self::once())->method('can')->with('view', self::callback(fn ($client) => $client->id === 1 && $client->company_id === 1))->willReturn(false);
+        auth()->setUser($user);
+        $files = $this->createMock(ClientFiles::class);
+        $files->expects(self::never())->method('sync'); $files->expects(self::never())->method('mapping');
+        $this->app->instance(ClientFiles::class, $files);
+        $storage = $this->createMock(FileLibrary::class);
+        foreach (['entries', 'files', 'read'] as $method) { $storage->expects(self::never())->method($method); }
+        $this->app->instance(FileLibrary::class, $storage);
+        $filter = new \App\Filters\DocumentFilters(new \Illuminate\Http\Request());
+        $property = new \ReflectionProperty(\App\Filters\QueryFilters::class, 'builder');
+        foreach ([3, 1] as $clientId) {
+            $property->setValue($filter, Document::query());
+            self::assertSame([], $filter->client_id((new Client())->encodePrimaryKey($clientId))->pluck('id')->all());
+        }
+    }
+
+    private function portalContact(): \App\Models\ClientContact
+    {
+        Schema::create('client_contacts', function (Blueprint $t) {
+            $t->id(); $t->integer('company_id'); $t->integer('client_id'); $t->string('email'); $t->softDeletes();
+        });
+        DB::table('client_contacts')->insert(['id' => 1, 'company_id' => 1, 'client_id' => 1, 'email' => 'viewer@example.test']);
+        $contact = new \App\Models\ClientContact();
+        $contact->forceFill(['id' => 1, 'company_id' => 1, 'client_id' => 1, 'email' => 'viewer@example.test']);
+        $contact->setRelation('client', $this->a); auth()->guard('contact')->setUser($contact);
+        return $contact;
+    }
 }

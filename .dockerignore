@@ -1,5 +1,7 @@
 .git
 .github
+.local/
+invoiceninja-ui/
 .env
 .env.*
 backups/

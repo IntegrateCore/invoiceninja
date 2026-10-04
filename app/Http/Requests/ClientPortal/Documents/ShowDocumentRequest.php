@@ -27,10 +27,16 @@ class ShowDocumentRequest extends FormRequest
      */
     public function authorize()
     {
-        $contact = auth()->guard('contact')->user();
-        $document = $this->document;
+        return $this->contactCanAccessDocument(auth()->guard('contact')->user(), $this->document);
+    }
+
+    public function contactCanAccessDocument(?ClientContact $contact, \App\Models\Document $document): bool
+    {
 
         if (! $contact || $document->company_id !== $contact->company_id || ! $document->is_public) {
+            return false;
+        }
+        if (config('integratecore.enabled') && $document->documentable_type === \App\Models\Client::class && $document->disk !== 'integratecore') {
             return false;
         }
 
@@ -39,6 +45,12 @@ class ShowDocumentRequest extends FormRequest
             && \App\Models\Document::withTrashed()->where('company_id', $document->company_id)
                 ->where('disk', 'integratecore')->where('url', $document->url)->where('is_public', false)->exists()) {
             return false;
+        }
+        if ($document->disk === 'integratecore' && $document->documentable_type === \App\Models\Client::class) {
+            $mapping = \App\Models\ClientFileFolder::where('company_id', $document->company_id)->where('client_id', $document->documentable_id)->first();
+            if ($document->trashed() || !$mapping || !\App\Services\IntegrateCore\FileLibrary::inside($document->url, $mapping->folder)) {
+                return false;
+            }
         }
 
         // Public company-level documents

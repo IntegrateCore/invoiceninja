@@ -34,9 +34,12 @@ class DocumentController extends Controller
     public function index()
     {
         $client = auth()->guard('contact')->user()->client;
-        if (config('integratecore.enabled') && app(\App\Services\IntegrateCore\ClientFiles::class)->mapping($client)) {
+        if (config('integratecore.enabled')) {
             $path = request()->validate(['path' => 'nullable|string|max:2048'])['path'] ?? '';
-            return render('documents.library', ['library' => app(\App\Services\IntegrateCore\DocumentLibrary::class)->listing($client, $path, true)]);
+            $library = app(\App\Services\IntegrateCore\ClientFiles::class)->mapping($client)
+                ? app(\App\Services\IntegrateCore\DocumentLibrary::class)->listing($client, $path, true)
+                : ['folder' => null, 'path' => '', 'entries' => []];
+            return render('documents.library', ['library' => $library]);
         }
         return render('documents.index');
     }

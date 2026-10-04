@@ -50,6 +50,19 @@ class DocumentFilters extends QueryFilters
      */
     public function client_id(string $client_id = ''): Builder
     {
+        if (config('integratecore.enabled')) {
+            $ids = (new \Hashids\Hashids(config('ninja.hash_salt'), 10))->decode($client_id);
+            $user = auth()->user();
+            $client = $user && count($ids) === 1
+                ? \App\Models\Client::withoutEagerLoads()->where('company_id', $user->companyId())->find($ids[0]) : null;
+            $files = app(\App\Services\IntegrateCore\ClientFiles::class);
+            $documents = [];
+            if ($client && $user->can('view', $client) && $files->mapping($client)) {
+                $files->sync($client);
+                $documents = app(\App\Services\IntegrateCore\DocumentLibrary::class)->documents($client, '', false)->pluck('id');
+            }
+            return $this->builder->whereIn('id', $documents);
+        }
 
         return $this->builder->where(function ($query) use ($client_id) {
             $query->whereHasMorph('documentable', [

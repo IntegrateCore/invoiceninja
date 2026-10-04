@@ -20,6 +20,11 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Build client portal assets
+        run: |
+          CYPRESS_INSTALL_BINARY=0 npm ci
+          npm run build
+
       - name: Prepare React FrontEnd
         run: |
           git clone https://github.com/IntegrateCore/invoiceninja-ui.git

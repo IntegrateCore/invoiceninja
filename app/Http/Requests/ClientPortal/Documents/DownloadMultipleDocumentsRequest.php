@@ -13,7 +13,6 @@
 namespace App\Http\Requests\ClientPortal\Documents;
 
 use App\Models\Document;
-use App\Models\ClientContact;
 use App\Utils\Traits\MakesHash;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -31,11 +30,13 @@ class DownloadMultipleDocumentsRequest extends FormRequest
         /** @var \App\Models\ClientContact $contact */
         $contact = auth()->guard('contact')->user();
 
+        if (!$contact) {
+            return false;
+        }
         $document_ids = $this->transformKeys($this->file_hash ?? []);
 
         /** @var \Illuminate\Database\Eloquent\Collection<int, \App\Models\Document> $documents */
         $documents = Document::query()
-            ->with('documentable')
             ->whereIn('id', $document_ids)
             ->where('company_id', $contact->company_id)
             ->get();
@@ -46,45 +47,12 @@ class DownloadMultipleDocumentsRequest extends FormRequest
         }
 
         foreach ($documents as $document) {
-            if (! $this->contactCanAccessDocument($contact, $document)) {
+            if (!(new ShowDocumentRequest())->contactCanAccessDocument($contact, $document)) {
                 return false;
             }
         }
 
         return true;
-    }
-
-    private function contactCanAccessDocument(ClientContact $contact, Document $document): bool
-    {
-        if (! $document->is_public) {
-            return false;
-        }
-
-        // Public company-level documents
-        if ($document->documentable_type == 'App\Models\Company') {
-            return $document->company_id == $contact->company_id;
-        }
-
-        // Documents attached directly to a client
-        if ($document->is_public && $document->documentable_type == 'App\Models\Client') {
-            return ClientContact::where('client_id', $document->documentable_id)
-                                ->where('email', $contact->email)
-                                ->where('company_id', $contact->company_id)
-                                ->exists();
-        }
-
-        $entity = $document->documentable;
-
-        if ($entity === null || ! isset($entity->client_id)) {
-            return false;
-        }
-
-        // Public documents on entities (Invoice, Quote, etc.) belonging to a client
-        // this contact has access to
-        return ClientContact::where('client_id', $entity->client_id)
-                            ->where('email', $contact->email)
-                            ->where('company_id', $contact->company_id)
-                            ->exists();
     }
 
     /**

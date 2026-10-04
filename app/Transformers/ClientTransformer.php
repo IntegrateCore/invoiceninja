@@ -63,8 +63,12 @@ class ClientTransformer extends EntityTransformer
     public function includeDocuments(Client $client)
     {
         $transformer = new DocumentTransformer($this->serializer);
-
-        return $this->includeCollection($client->documents, $transformer, Document::class);
+        $documents = $client->documents;
+        if (config('integratecore.enabled')) {
+            $documents = app(\App\Services\IntegrateCore\ClientFiles::class)->mapping($client)
+                ? app(\App\Services\IntegrateCore\DocumentLibrary::class)->documents($client, '', false) : collect();
+        }
+        return $this->includeCollection($documents, $transformer, Document::class);
     }
 
     /**
