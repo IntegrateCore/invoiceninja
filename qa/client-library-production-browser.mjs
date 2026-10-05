@@ -214,7 +214,7 @@ try {
         ]) {
             assert.ok(entity);
             assert.equal(entity.consulting_hours_balance, client.balance);
-            assert.equal(entity.custom_value1, String(client.balance));
+            assert.equal(entity.custom_value1, client.balance.toFixed(2));
             sameIds(
                 entity.documents.map((document) => document.id),
                 client.native_document_ids

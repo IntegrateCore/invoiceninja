@@ -172,7 +172,7 @@ class NPlusOneListTest extends TestCase
         $response->assertOk();
         $clients = collect($response->json('data'))->filter(fn ($client) => str_starts_with($client['name'], 'N+1 Mobile Hours'));
         $this->assertCount(10, $clients);
-        $this->assertTrue($clients->every(fn ($client) => $client['custom_value1'] === '3.125'));
+        $this->assertTrue($clients->every(fn ($client) => $client['custom_value1'] === '3.13'));
     }
 
     public function testInvoiceListNPlusOne(): void

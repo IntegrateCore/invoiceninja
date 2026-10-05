@@ -62,7 +62,7 @@ class ConsultingHours
         if ($this->mobileSlot($client->company) !== $slot || $stored !== '') {
             return $stored;
         }
-        return rtrim(rtrim(number_format((float) $client->consulting_hours_balance, 6, '.', ''), '0'), '.');
+        return number_format((float) $client->consulting_hours_balance, 2, '.', '');
     }
 
     public function stripComputedInput(array $input, Company $company): array

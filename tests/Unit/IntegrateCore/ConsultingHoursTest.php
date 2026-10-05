@@ -118,9 +118,15 @@ class ConsultingHoursTest extends TestCase
         $company->consulting_hours_custom_field = 3;
         $client = $this->client(1.234567);
         $client->setRelation('company', $company);
-        $this->assertSame('1.234567', $hours->mobileValue($client, 3));
+        $this->assertSame('1.23', $hours->mobileValue($client, 3));
+        $this->assertEquals(1.234567, $client->consulting_hours_balance);
+        $client->consulting_hours_balance = 3.238057;
+        $this->assertSame('3.24', $hours->mobileValue($client, 3));
+        $this->assertEquals(3.238057, $client->consulting_hours_balance);
+        $client->consulting_hours_balance = 3.125;
+        $this->assertSame('3.13', $hours->mobileValue($client, 3));
         $client->consulting_hours_balance = 0;
-        $this->assertSame('0', $hours->mobileValue($client, 3));
+        $this->assertSame('0.00', $hours->mobileValue($client, 3));
         $client->custom_value3 = 'Existing field';
         $this->assertSame('Existing field', $hours->mobileValue($client, 3));
         $client->custom_value3 = '';
