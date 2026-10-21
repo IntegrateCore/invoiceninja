@@ -54,7 +54,7 @@ RUN set -eux; \
 # Keep both SAPIs and the rebuilt extensions on a fixed PHP 8.4 release.
 RUN php -r 'if (PHP_VERSION_ID < 80427 || PHP_VERSION_ID >= 80500) { fwrite(STDERR, "PHP 8.4.27 or newer 8.4 is required\n"); exit(1); }' \
     && php-fpm -v | grep -F "PHP $(php -r 'echo PHP_VERSION;')" \
-    && php -r 'foreach (["bcmath", "exif", "gd", "intl", "soap", "Zend OPcache"] as $extension) { if (!extension_loaded($extension)) { fwrite(STDERR, "Missing PHP extension: $extension\n"); exit(1); } }'
+    && php -r 'foreach (["bcmath", "exif", "gd", "intl", "soap", "Zend OPcache"] as $extension) { if (!extension_loaded($extension) || phpversion($extension) !== PHP_VERSION) { fwrite(STDERR, "Missing or mismatched PHP extension: $extension\n"); exit(1); } }'
 
 FROM php-runtime AS app
 
