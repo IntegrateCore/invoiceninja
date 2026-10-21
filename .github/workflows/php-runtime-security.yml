@@ -1,0 +1,46 @@
+name: Verify PHP security runtime
+
+on:
+  push:
+    branches:
+      - security/php-8-4-27-runtime-20261021
+  pull_request:
+    branches:
+      - v5-stable
+    paths:
+      - Dockerfile
+      - .github/workflows/php-runtime-security.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build patched PHP runtime
+        run: docker build --target php-runtime --tag invoiceninja-php-runtime:security .
+
+      - name: Check PHP CLI, FPM and rebuilt extensions
+        run: |
+          set -euo pipefail
+          image=invoiceninja-php-runtime:security
+          version=$(docker run --rm --entrypoint php "$image" -r 'echo PHP_VERSION;')
+          docker run --rm --entrypoint php-fpm "$image" -v | grep -F "PHP $version"
+          docker run --rm --entrypoint php-fpm "$image" -t
+          docker run --rm --entrypoint php "$image" -r 'if (PHP_VERSION_ID < 80427 || PHP_VERSION_ID >= 80500) { exit(1); } foreach (["bcmath", "exif", "gd", "intl", "soap", "Zend OPcache"] as $extension) { if (!extension_loaded($extension) || phpversion($extension) !== PHP_VERSION) { fwrite(STDERR, "Missing or mismatched $extension\n"); exit(1); } } if (bcadd("1", "2", 2) !== "3.00") { exit(1); }'
+
+      - name: Build customized Invoice Ninja image without publishing
+        run: docker build --tag invoiceninja-php-app:security .
+
+      - name: Check application image
+        run: |
+          set -euo pipefail
+          image=invoiceninja-php-app:security
+          docker run --rm --entrypoint php "$image" -r 'if (PHP_VERSION_ID < 80427 || PHP_VERSION_ID >= 80500) { exit(1); } foreach (["bcmath", "exif", "gd", "intl", "soap", "Zend OPcache"] as $extension) { if (!extension_loaded($extension) || phpversion($extension) !== PHP_VERSION) { exit(1); } }'
+          docker run --rm --entrypoint php-fpm "$image" -t
+          docker run --rm --entrypoint cat "$image" /var/www/html/VERSION.txt | grep -Fx '5.13.43'
