@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         xfonts-wqy \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/mlocati/php-extension-installer /usr/bin/install-php-extensions /usr/local/bin/
+COPY --from=ghcr.io/mlocati/php-extension-installer@sha256:ac4b252c153a9f6de5578ff2c417790aba836bb49855543144606033eceda253 /usr/bin/install-php-extensions /usr/local/bin/
 
 RUN install-php-extensions \
         bcmath \
