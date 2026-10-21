@@ -1,8 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG PHP_VERSION=8.4
-
-FROM php:${PHP_VERSION}-fpm-bookworm
+FROM php:8.4.27-fpm-bookworm@sha256:6d2c08c2ce0548e9bc55e21aab68f5a2613e635e4225fdea84290459728995e7 AS php-runtime
 
 ENV APP_HOME=/var/www/html \
     COMPOSER_ALLOW_SUPERUSER=1 \
@@ -52,6 +50,13 @@ RUN set -eux; \
         fi; \
         sleep "$((attempt * 5))"; \
     done
+
+# Keep both SAPIs and the rebuilt extensions on a fixed PHP 8.4 release.
+RUN php -r 'if (PHP_VERSION_ID < 80427 || PHP_VERSION_ID >= 80500) { fwrite(STDERR, "PHP 8.4.27 or newer 8.4 is required\n"); exit(1); }' \
+    && php-fpm -v | grep -F "PHP $(php -r 'echo PHP_VERSION;')" \
+    && php -r 'foreach (["bcmath", "exif", "gd", "intl", "soap", "Zend OPcache"] as $extension) { if (!extension_loaded($extension)) { fwrite(STDERR, "Missing PHP extension: $extension\n"); exit(1); } }'
+
+FROM php-runtime AS app
 
 RUN if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
         mkdir -p /etc/apt/keyrings && \
