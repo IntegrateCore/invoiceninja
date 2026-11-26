@@ -11,7 +11,8 @@
 3. **Verify and prove local identity.** Seal the inbox slot, verify all bytes
    against the trusted handoff, then use a separately reviewed same-host
    import. Inspect the image by the original repository@digest and require
-   the verified config ID and linux/amd64. No tags or rewritten manifests.
+   the manifest identity, separately verified config, and linux/amd64. No
+   tags or rewritten manifests.
 4. **Approve staging deployment separately.** Before applying, reserve a
    change window, pause competing writers, and verify matched recoverable DB
    and storage backups. Keep the release lock, label/runtime checks,
@@ -79,14 +80,34 @@ files and tag-only or mismatched runtime evidence. It does not listen,
 contact a registry, or import images. Do not extract untrusted archives or
 recompress layers; the OCI index is only a pointer to the original manifest.
 
-The lowest-risk next step is to prove, with a harmless synthetic layout in
-a disposable nonproduction runtime matching staging's Docker image store,
-that a restricted same-host offline import preserves the original
-repository@digest and config. Give the receiver no Docker access; a separate
-local operator rechecks a sealed slot before importing. Collect fresh runtime
-inspect output locally by the exact reference; uploader-provided evidence
-does not count. If that identity cannot be preserved, stop. A reviewed
-offline release path is still necessary; do not skip the current pull guard.
+### Verified offline import candidate
+
+[Run 45909090809, job 140212838187](https://github.com/IntegrateCore/invoiceninja/actions/runs/45909090809/job/140212838187)
+used a disposable Ubuntu 24.04 runner with matching Docker 29.1.3,
+containerd 2.2.1, runc 1.3.4, containerd overlayfs image store, linux/amd64
+and cgroup v2. With a tiny synthetic single-manifest OCI archive,
+`docker image load` preserved the fixture's original repository@digest
+for both tested index annotations (tag or exact digest). The exact
+reference still ran with `--pull never` after the tag moved. Wrong digest
+and tag-only evidence were rejected. No registry or transport was needed
+for the successful import.
+
+Minimal route to review: after the owner approves a local import, have the
+operator verify a sealed image and load its OCI archive with the original
+repository name. Do not give the receiver Docker access. Require fresh
+Docker inspect evidence for that exact reference: RepoDigests must include
+it, and Id and Descriptor.digest must both be the manifest digest on this
+image store. Independently retrieve and hash the actual manifest and config
+bytes from the local containerd content store; verify the manifest links
+to the already-approved config. Do not compare Docker's Id to the config
+digest on this store. The original OCI bytes and release pins remain the
+authority, not a tag or an uploader-supplied receipt.
+
+The test did not use the real GHCR image, staging daemon, production,
+Tailscale, or a customer workload. The current release script still requires
+a GHCR pull. A separate review must approve the local importer and offline
+release integration before any staging attempt; do not skip or change the
+current pull/rollback guards here.
 
 An existing scoped private blob store could remove the inbound listener
 but would still need the same byte checks and import proof. No approved

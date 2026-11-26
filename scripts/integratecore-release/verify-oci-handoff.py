@@ -229,9 +229,10 @@ def accept_local(source, inbox, handoff, image, backend, ui, php_base, byte_limi
     return recipient_config
 
 
-def check_runtime_evidence(inspect_payload, image, config):
-    """Check operator-collected inspect output; never load, tag or run an image."""
-    require(image.startswith(REPOSITORY + "@") and DIGEST.fullmatch(image.split("@", 1)[1]),
+def check_runtime_evidence(inspect_payload, image, config, manifest_bytes, config_bytes):
+    """Verify locally collected Docker/containerd evidence; no import or execution."""
+    repo, separator, digest = image.partition("@")
+    require(repo == REPOSITORY and separator and DIGEST.fullmatch(digest),
             "runtime evidence needs an approved digest reference")
     require(DIGEST.fullmatch(config), "runtime evidence needs a verified config digest")
     items = json.loads(inspect_payload, object_pairs_hook=unique_object)
@@ -239,9 +240,17 @@ def check_runtime_evidence(inspect_payload, image, config):
             "expected exactly one locally inspected image")
     item = items[0]
     digests = item.get("RepoDigests")
-    require(isinstance(digests, list) and image in digests and item.get("Id") == config
+    runtime_descriptor = item.get("Descriptor")
+    require(isinstance(digests, list) and image in digests and item.get("Id") == digest
+            and isinstance(runtime_descriptor, dict) and runtime_descriptor.get("digest") == digest
             and item.get("Os") == "linux" and item.get("Architecture") == "amd64",
-            "runtime does not resolve the approved repository digest to the verified config")
+            "runtime does not resolve the approved repository manifest digest")
+    for data, expected in ((manifest_bytes, digest), (config_bytes, config)):
+        require(0 < len(data) <= METADATA_LIMIT and "sha256:" + hashlib.sha256(data).hexdigest() == expected,
+                "runtime content digest mismatch")
+    manifest = json_object(manifest_bytes)
+    require(descriptor(manifest.get("config"), CONFIG_TYPES)[0] == DIGEST.fullmatch(config).group(1),
+            "runtime manifest does not reference the verified config")
 
 
 def main():

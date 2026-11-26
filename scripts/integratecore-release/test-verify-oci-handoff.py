@@ -136,7 +136,8 @@ class HandoffTests(unittest.TestCase):
         return accept_local(self.layout, inbox, self.handoff, self.image, BACKEND, UI, PHP_BASE, limit)
 
     def runtime_payload(self, **changes):
-        item = {"Id": self.config["digest"], "RepoDigests": [self.image],
+        item = {"Id": self.manifest["digest"], "RepoDigests": [self.image],
+                "Descriptor": {"digest": self.manifest["digest"]},
                 "Os": "linux", "Architecture": "amd64"}
         return json.dumps([dict(item, **changes)])
 
@@ -153,7 +154,9 @@ class HandoffTests(unittest.TestCase):
         self.assertFalse((inbox / "sealed" / self.handoff.name).exists())
         self.assertEqual(verify(inbox / "sealed", self.handoff, self.image,
                                 BACKEND, UI, PHP_BASE), verified)
-        check_runtime_evidence(self.runtime_payload(), self.image, verified)
+        check_runtime_evidence(self.runtime_payload(), self.image, verified,
+                               self.blob_path(self.manifest).read_bytes(),
+                               self.blob_path(self.config).read_bytes())
         with self.assertRaisesRegex(InvalidHandoff, "unexpected layout entry"):
             self.accept(inbox, config["inbox_example"]["max_blob_bytes"])
 
@@ -180,13 +183,24 @@ class HandoffTests(unittest.TestCase):
                 self.accept(inbox, 4096)
         self.assertEqual(list(inbox.iterdir()), [])
 
-    def test_runtime_rejects_tag_only_or_wrong_config(self):
+    def test_runtime_rejects_tag_only_or_wrong_manifest(self):
         for changes in ({"RepoDigests": []},
                         {"RepoDigests": [REPO + ":candidate"]},
-                        {"Id": "sha256:" + "d" * 64}):
+                        {"Id": self.config["digest"]},
+                        {"Descriptor": {"digest": "sha256:" + "d" * 64}}):
             with self.subTest(changes=changes):
                 with self.assertRaisesRegex(InvalidHandoff, "does not resolve"):
-                    check_runtime_evidence(self.runtime_payload(**changes), self.image, self.config["digest"])
+                    check_runtime_evidence(self.runtime_payload(**changes), self.image, self.config["digest"],
+                                           self.blob_path(self.manifest).read_bytes(),
+                                           self.blob_path(self.config).read_bytes())
+
+    def test_runtime_rejects_mismatched_store_bytes(self):
+        manifest = self.blob_path(self.manifest).read_bytes()
+        config = self.blob_path(self.config).read_bytes()
+        for observed in ((manifest + b" ", config), (manifest, config + b" ")):
+            with self.subTest(observed=observed):
+                with self.assertRaisesRegex(InvalidHandoff, "runtime content digest mismatch"):
+                    check_runtime_evidence(self.runtime_payload(), self.image, self.config["digest"], *observed)
 
 
 if __name__ == "__main__":
