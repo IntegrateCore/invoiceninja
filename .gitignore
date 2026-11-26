@@ -2,10 +2,13 @@
 /public/hot
 /public/storage
 /public/react
+/public/flutter
+/resources/views/flutter
 /storage/*.key
 /storage/debugbar
 /storage/*
 /tests/bootstrap/
+/tests/artifacts/
 /vendor
 /app/Console/Commands/vendor/
 /.idea
@@ -66,6 +69,7 @@ backups/
 CLAUDE.md
 boost.json
 AGENTS.md
+!/AGENTS.md
 junie/
 .agents/
 .claude/
@@ -79,5 +83,9 @@ node_modules/
 /playwright/.cache/
 /playwright/.auth/
 
-# Private development verification artifacts
+# PHP CS Fixer configuration
+/.php-cs-fixer.cache
+/.php-cs-fixer.php
+
+# Private development and native MCP credentials/test artifacts
 /.local/

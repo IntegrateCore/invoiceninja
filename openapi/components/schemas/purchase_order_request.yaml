@@ -1,8 +1,6 @@
     PurchaseOrderRequest:
       required:
         - vendor_id
-        - date
-        - due_date
       properties:
         vendor_id:
           description: 'The hashed ID of the vendor'
@@ -105,4 +103,10 @@
               tax_id:
                 type: string
                 example: '1'
+        tags:
+          description: 'Full sync array of hashed tag IDs. Omit to leave existing tags unchanged; send [] to detach all tags.'
+          type: array
+          items:
+            type: string
+            example: Opnel5aKBz
       type: object

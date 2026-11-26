@@ -56,6 +56,59 @@ class ClientApiTest extends TestCase
     }
 
 
+    public function testClientStoreAcceptsPaymentMeansWithoutBankDetails(): void
+    {
+        $e_invoice = [
+            'Invoice' => [
+                'PaymentMeans' => [
+                    ['PaymentMeansCode' => ['value' => '30']],
+                ],
+            ],
+        ];
+
+        $response = $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+        ])->postJson('/api/v1/clients/', [
+            'name' => 'Payment Means Client',
+            'e_invoice' => $e_invoice,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonMissingValidationErrors();
+
+        $client = Client::findOrFail($this->decodePrimaryKey($response->json('data.id')));
+        $this->assertSame($e_invoice, json_decode(json_encode($client->e_invoice), true));
+        $this->assertSame($e_invoice, $response->json('data.e_invoice'));
+    }
+
+    public function testClientUpdateAcceptsPaymentMeansWithoutBankDetails(): void
+    {
+        $e_invoice = [
+            'Invoice' => [
+                'PaymentMeans' => [
+                    ['PaymentMeansCode' => ['value' => '30']],
+                ],
+            ],
+        ];
+
+        $this->client->e_invoice = null;
+        $this->client->save();
+
+        $response = $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+        ])->putJson('/api/v1/clients/'.$this->client->hashed_id, [
+            'e_invoice' => $e_invoice,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonMissingValidationErrors();
+
+        $this->assertSame($e_invoice, json_decode(json_encode($this->client->fresh()->e_invoice), true));
+        $this->assertSame($e_invoice, $response->json('data.e_invoice'));
+    }
+
     public function testClientUpdatePersistsNullSettingsKeysAndFallsBackToCompany(): void
     {
         $company_settings = $this->company->settings;
@@ -570,6 +623,36 @@ class ClientApiTest extends TestCase
             $this->assertSame('', $client['custom_value1']);
         }
         $this->assertSame(3.125, (float) $this->client->fresh()->consulting_hours_balance);
+    }
+
+    public function testTaskConsultingHoursSnapshotDoesNotRunClientFileSync(): void
+    {
+        config(['integratecore.enabled' => true]);
+        $this->mock(\App\Services\IntegrateCore\ClientFiles::class)
+            ->shouldNotReceive('sync');
+
+        $client = $this->client;
+        $client->consulting_hours_balance = 1.125;
+        $client->consulting_hours_funded = true;
+        $client->saveQuietly();
+
+        $uri = "/api/v1/clients/{$client->hashed_id}/consulting_hours";
+        $this->withHeaders(['X-API-TOKEN' => $this->token])
+            ->getJson($uri)
+            ->assertOk()
+            ->assertExactJson(['data' => [
+                'consulting_hours_balance' => 1.125,
+                'consulting_hours_funded' => true,
+                'consulting_hours_warn_at' => ConsultingHours::THRESHOLD,
+            ]]);
+
+        $client->consulting_hours_balance = 0;
+        $client->consulting_hours_funded = false;
+        $client->saveQuietly();
+
+        $this->getJson($uri)
+            ->assertOk()
+            ->assertJsonPath('data.consulting_hours_funded', false);
     }
 
     public function testCurrencyCodePassesValidation()

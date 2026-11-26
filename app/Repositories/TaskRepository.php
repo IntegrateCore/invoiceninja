@@ -19,6 +19,7 @@ use App\Models\Client;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\IntegrateCore\ConsultingHours;
 use App\Utils\Traits\GeneratesCounter;
 use App\Utils\Traits\MakesHash;
 use Illuminate\Contracts\Cache\LockTimeoutException;
@@ -164,6 +165,8 @@ class TaskRepository extends BaseRepository
      */
     public function save(array $data, Task $task): ?Task
     {
+        $previousClientId = $task->getOriginal('client_id');
+
         if ($task->id) {
             $this->new_task = false;
         }
@@ -177,6 +180,8 @@ class TaskRepository extends BaseRepository
         $tag_ids = $this->resolveTagIdsForSync($data, $task);
 
         $lockKey = $this->new_task ? $this->calendarEventLockKey($data, $task) : null;
+
+        $original_assigned_user_id = $task->assigned_user_id;
 
         if ($lockKey) {
             try {
@@ -199,10 +204,6 @@ class TaskRepository extends BaseRepository
 
             $task->fill($data);
             $task->saveQuietly();
-        }
-
-        if (isset($data['assigned_user_id']) && $data['assigned_user_id'] != $task->assigned_user_id) {
-            TaskAssigned::dispatch($task, $task->company->db)->delay(2);
         }
 
         $this->init($task);
@@ -307,6 +308,12 @@ class TaskRepository extends BaseRepository
         $task->time_log = json_encode($time_log);
 
         $task->saveQuietly();
+        app(ConsultingHours::class)->syncTask($task, $previousClientId);
+
+        // Compare with the assignee from before fill(), and dispatch after the final save so a new task has its number.
+        if (isset($data['assigned_user_id']) && $data['assigned_user_id'] != $original_assigned_user_id) {
+            TaskAssigned::dispatch($task, $task->company->db)->delay(2);
+        }
 
         if (array_key_exists('documents', $data)) {
             $this->saveDocuments($data['documents'], $task);
@@ -463,7 +470,10 @@ class TaskRepository extends BaseRepository
 
             $task->time_log = json_encode($log);
             $task->is_running = false;
-            $task->saveQuietly();
+            $task->getConnection()->transaction(function () use ($task) {
+                $task->saveQuietly();
+                app(ConsultingHours::class)->syncTask($task);
+            });
         }
 
         $this->calculateProjectDuration($task);
@@ -598,7 +608,7 @@ class TaskRepository extends BaseRepository
 
             if ($project) {
                 /** @var \App\Models\Project $project */
-                $models->update([
+                $this->bulkReassign($models, [
                     'project_id' => $project->id,
                     'client_id' => $project->client_id,
                 ]);
@@ -612,7 +622,7 @@ class TaskRepository extends BaseRepository
 
             if ($client) {
             // If you are updating the client - we will unset the project id!
-                $models->update(['client_id' => $client->id, 'project_id' => null]);
+                $this->bulkReassign($models, ['client_id' => $client->id, 'project_id' => null]);
             }
             
         } elseif ($column === 'assigned_user_id') {
@@ -630,6 +640,31 @@ class TaskRepository extends BaseRepository
             // Assigned User
             $models->update([$column => $new_value]);
         }
+    }
+
+    /** Move only the selected tasks, holding each task and its balance deltas in one transaction. */
+    private function bulkReassign(Builder $models, array $attributes): void
+    {
+        $key = $models->getModel()->getQualifiedKeyName();
+
+        // Read only keys in small batches; don't lock an entire selection while updating clients.
+        (clone $models)->select($key)->lazyById(50, $key, $models->getModel()->getKeyName())
+            ->each(function (Task $selected) use ($models, $attributes) {
+                $selected->getConnection()->transaction(function () use ($models, $selected, $attributes) {
+                    $scope = (clone $models)->whereKey($selected->getKey());
+                    $task = (clone $scope)->lockForUpdate()->first();
+                    if (!$task) {
+                        return;
+                    }
+
+                    // Builder update preserves existing bulk behavior (no model events or project touches).
+                    $scope->update($attributes);
+                    $previousClientId = $task->client_id;
+                    if ($previousClientId != $attributes['client_id']) {
+                        app(ConsultingHours::class)->syncTask($task, $previousClientId);
+                    }
+                }, 2);
+            });
     }
 
 }

@@ -46,8 +46,10 @@ use App\PaymentDrivers\Stripe\Klarna;
 use App\PaymentDrivers\Stripe\SOFORT;
 use App\PaymentDrivers\Stripe\GIROPAY;
 use Stripe\Exception\ApiErrorException;
+use Stripe\PaymentMethodDomain;
 use App\Exceptions\StripeConnectFailure;
 use App\PaymentDrivers\Stripe\Utilities;
+use App\PaymentDrivers\Stripe\Jobs\RefundFailed;
 use App\PaymentDrivers\Stripe\Bancontact;
 use App\PaymentDrivers\Stripe\BrowserPay;
 use App\PaymentDrivers\Stripe\CreditCard;
@@ -131,12 +133,16 @@ class StripePaymentDriver extends BaseDriver implements SupportsHeadlessInterfac
             );
 
             Stripe::setApiKey($this->company_gateway->getConfigField('apiKey'));
-            // Stripe::setAPiVersion('2023-10-16');
-            // Stripe::setApiVersion('2024-04-10');
-            Stripe::setApiVersion('2025-03-31.basil');
         }
 
+        Stripe::setApiVersion($this->apiVersion());
+
         return $this;
+    }
+
+    public function apiVersion(): string
+    {
+        return '2025-03-31.basil';
     }
 
     public function setPaymentMethod($payment_method_id)
@@ -504,7 +510,10 @@ class StripePaymentDriver extends BaseDriver implements SupportsHeadlessInterfac
      */
     public function getSetupIntent(): SetupIntent
     {
-        return $this->createSetupIntent(['usage' => 'off_session']);
+        return $this->createSetupIntent([
+            'usage' => 'off_session',
+            'payment_method_types' => ['card'],
+        ]);
     }
 
     public function createSetupIntent(array $params): SetupIntent
@@ -889,6 +898,16 @@ class StripePaymentDriver extends BaseDriver implements SupportsHeadlessInterfac
             return response()->json([], 200);
         }
 
+        if ($event->type === 'refund.failed') {
+            RefundFailed::dispatch(
+                $event->data->object->toArray(),
+                $this->company_gateway->company->company_key,
+                $this->company_gateway->id,
+            )->delay(now()->addSeconds(5));
+
+            return response()->json([], 200);
+        }
+
         if ($request->type === 'charge.refunded' && $request->data['object']['status'] == 'succeeded') {
             ChargeRefunded::dispatch($request->data, $request->company_key)->delay(now()->addSeconds(5));
 
@@ -904,10 +923,11 @@ class StripePaymentDriver extends BaseDriver implements SupportsHeadlessInterfac
 
                     if (isset($transaction['payment_method_details']['au_becs_debit'])) {
                         $payment->transaction_reference = $transaction['id'];
+                        $payment->saveQuietly();
                     }
 
-                    $payment->status_id = Payment::STATUS_COMPLETED;
-                    $payment->save();
+                    $payment = $payment->service()->completePendingPayment();
+
                 }
             }
 
@@ -930,8 +950,7 @@ class StripePaymentDriver extends BaseDriver implements SupportsHeadlessInterfac
                     $payment = self::findPaymentByStripeReference($this->company_gateway->company_id, $transaction);
 
                     if ($payment) {
-                        $payment->status_id = Payment::STATUS_COMPLETED;
-                        $payment->save();
+                        $payment = $payment->service()->completePendingPayment();
                     }
                 }
             }
@@ -1083,11 +1102,59 @@ class StripePaymentDriver extends BaseDriver implements SupportsHeadlessInterfac
 
     public function setApplePayDomain($domain)
     {
+        $this->ensurePaymentMethodDomainRegistered($domain);
+    }
+
+    /**
+     * Register and validate a payment method domain for Apple Pay / wallet buttons.
+     *
+     * @throws ApiErrorException
+     */
+    public function ensurePaymentMethodDomainRegistered(string $domain): PaymentMethodDomain
+    {
         $this->init();
 
-        \Stripe\ApplePayDomain::create([
-            'domain_name' => $domain,
-        ], $this->stripe_connect_auth);
+        $opts = $this->stripe_connect_auth;
+
+        $payment_method_domain = $this->findPaymentMethodDomain($domain, $opts);
+
+        if (! $payment_method_domain) {
+            $payment_method_domain = PaymentMethodDomain::create(
+                ['domain_name' => $domain],
+                $opts
+            );
+        }
+
+        if (($payment_method_domain->apple_pay->status ?? '') !== 'active') {
+            $payment_method_domain->validate(null, $opts);
+            $payment_method_domain = PaymentMethodDomain::retrieve($payment_method_domain->id, $opts);
+        }
+
+        return $payment_method_domain;
+    }
+
+    private function findPaymentMethodDomain(string $domain, array $opts): ?PaymentMethodDomain
+    {
+        $config = $this->company_gateway->getConfig();
+        $stored_id = $config->apple_pay_domain_id ?? null;
+
+        if (is_string($stored_id) && str_starts_with($stored_id, 'pmd_')) {
+            try {
+                $payment_method_domain = PaymentMethodDomain::retrieve($stored_id, $opts);
+
+                if ($payment_method_domain->domain_name === $domain) {
+                    return $payment_method_domain;
+                }
+            } catch (ApiErrorException) {
+            }
+        }
+
+        $domains = PaymentMethodDomain::all(
+            ['domain_name' => $domain, 'limit' => 1],
+            $opts
+        );
+
+        return $domains->data[0] ?? null;
     }
 
     public function disconnect()

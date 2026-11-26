@@ -12,44 +12,45 @@
 
 namespace App\Transformers;
 
-use App\Models\Task;
-use App\Models\User;
-use App\Models\Quote;
-use App\Models\Client;
-use App\Models\Credit;
-use App\Models\Design;
-use App\Models\Vendor;
 use App\Models\Account;
-use App\Models\Company;
-use App\Models\Expense;
-use App\Models\Invoice;
-use App\Models\Payment;
-use App\Models\Product;
-use App\Models\Project;
-use App\Models\TaxRate;
-use App\Models\Webhook;
 use App\Models\Activity;
-use App\Models\Document;
-use App\Models\Location;
-use App\Models\Scheduler;
-use App\Models\SystemLog;
-use App\Models\TaskStatus;
-use App\Models\CompanyUser;
-use App\Models\PaymentTerm;
-use App\Models\CompanyToken;
-use App\Models\GroupSetting;
-use App\Models\Subscription;
-use App\Models\CompanyLedger;
-use App\Models\PurchaseOrder;
-use App\Models\CompanyGateway;
 use App\Models\BankIntegration;
 use App\Models\BankTransaction;
+use App\Models\BankTransactionRule;
+use App\Models\Client;
+use App\Models\ClientContact;
+use App\Models\Company;
+use App\Models\CompanyGateway;
+use App\Models\CompanyLedger;
+use App\Models\CompanyToken;
+use App\Models\CompanyUser;
+use App\Models\Credit;
+use App\Models\Design;
+use App\Models\Document;
+use App\Models\Expense;
 use App\Models\ExpenseCategory;
-use App\Utils\Traits\MakesHash;
 use App\Services\IntegrateCore\ConsultingHours;
+use App\Models\GroupSetting;
+use App\Models\Invoice;
+use App\Models\Location;
+use App\Models\Payment;
+use App\Models\PaymentTerm;
+use App\Models\Product;
+use App\Models\Project;
+use App\Models\PurchaseOrder;
+use App\Models\Quote;
 use App\Models\RecurringExpense;
 use App\Models\RecurringInvoice;
-use App\Models\BankTransactionRule;
+use App\Models\Scheduler;
+use App\Models\Subscription;
+use App\Models\SystemLog;
+use App\Models\Task;
+use App\Models\TaskStatus;
+use App\Models\TaxRate;
+use App\Models\User;
+use App\Models\Vendor;
+use App\Models\Webhook;
+use App\Utils\Traits\MakesHash;
 
 /**
  * Class CompanyTransformer.
@@ -74,14 +75,11 @@ class CompanyTransformer extends EntityTransformer
         'designs',
         'account',
         'clients',
-        'contacts',
+        // 'contacts', this should not be exposed/used.
         'invoices',
         'recurring_invoices',
         'tax_rates',
         'products',
-        'country',
-        'timezone',
-        'language',
         'expenses',
         'vendors',
         'payments',
@@ -158,7 +156,7 @@ class CompanyTransformer extends EntityTransformer
             'matomo_id' => (string) $company->matomo_id ?: '',
             'enabled_item_tax_rates' => (int) $company->enabled_item_tax_rates,
             'client_can_register' => (bool) $company->client_can_register,
-            'is_large' => (bool) $this->isLarge($company),
+            'is_large' => true, // Entity collections are always loaded through their paginated endpoints
             'is_disabled' => (bool) $company->is_disabled,
             'enable_shop_api' => (bool) $company->enable_shop_api,
             'mark_expenses_invoiceable' => (bool) $company->mark_expenses_invoiceable,
@@ -201,7 +199,7 @@ class CompanyTransformer extends EntityTransformer
             'notify_vendor_when_paid' => (bool) $company->notify_vendor_when_paid,
             'invoice_task_hours' => (bool) $company->invoice_task_hours,
             'calculate_taxes' => (bool) $company->calculate_taxes,
-            'tax_data' => $company->tax_data ?: new \stdClass(),
+            'tax_data' => $company->tax_data ?: new \stdClass(), //@phpstan-ignore-line
             'has_e_invoice_certificate' => $company->e_invoice_certificate ? true : false,
             'has_e_invoice_certificate_passphrase' => $company->e_invoice_certificate_passphrase ? true : false,
             'invoice_task_project_header' => (bool) $company->invoice_task_project_header,
@@ -249,43 +247,37 @@ class CompanyTransformer extends EntityTransformer
         return $quickbooks;
     }
 
-    private function isLarge(Company $company): bool
-    {
-        /** @var \App\Models\User $user */
-        $user = auth()->user();
-
-        //if the user is attached to more than one company AND they are not an admin across all companies
-        if ($company->is_large || ($user->company_users()->count() > 1 && ($user->company_users()->where('is_admin', 1)->count() != $user->company_users()->count()))) {
-            return true;
-        }
-
-        return false;
-    }
-
     public function includeExpenseCategories(Company $company)
     {
-        $transformer = new ExpenseCategoryTransformer($this->serializer);
+        $transformer = new ExpenseCategoryTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->expense_categories, $transformer, ExpenseCategory::class);
     }
 
     public function includeTaskStatuses(Company $company)
     {
-        $transformer = new TaskStatusTransformer($this->serializer);
+        $transformer = new TaskStatusTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->task_statuses, $transformer, TaskStatus::class);
     }
 
+    public function includeContacts(Company $company)
+    {
+        $transformer = new ClientContactTransformer($this->serializer, $this->user);
+
+        return $this->includeCollection($company->contacts, $transformer, ClientContact::class);
+    }
+
     public function includeDocuments(Company $company)
     {
-        $transformer = new DocumentTransformer($this->serializer);
+        $transformer = new DocumentTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->documents, $transformer, Document::class);
     }
 
     public function includeCompanyUser(Company $company)
     {
-        $transformer = new CompanyUserTransformer($this->serializer);
+        $transformer = new CompanyUserTransformer($this->serializer, $this->user);
 
         return $this->includeItem($company->company_users->where('user_id', auth()->user()->id)->first(), $transformer, CompanyUser::class);
     }
@@ -293,7 +285,7 @@ class CompanyTransformer extends EntityTransformer
     public function includeTokens(Company $company)
     {
         // $transformer = new CompanyTokenTransformer($this->serializer);
-        $transformer = new CompanyTokenHashedTransformer($this->serializer);
+        $transformer = new CompanyTokenHashedTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->tokens_hashed, $transformer, CompanyToken::class);
     }
@@ -301,7 +293,7 @@ class CompanyTransformer extends EntityTransformer
 
     public function includeBankTransactions(Company $company)
     {
-        $transformer = new BankTransactionTransformer($this->serializer);
+        $transformer = new BankTransactionTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->bank_transactions, $transformer, BankTransaction::class);
     }
@@ -309,21 +301,21 @@ class CompanyTransformer extends EntityTransformer
 
     public function includeTaskSchedulers(Company $company)
     {
-        $transformer = new SchedulerTransformer($this->serializer);
+        $transformer = new SchedulerTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->schedulers, $transformer, Scheduler::class);
     }
 
     public function includeSchedulers(Company $company)
     {
-        $transformer = new SchedulerTransformer($this->serializer);
+        $transformer = new SchedulerTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->schedulers, $transformer, Scheduler::class);
     }
 
     public function includeLocations(Company $company)
     {
-        $transformer = new LocationTransformer($this->serializer);
+        $transformer = new LocationTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->locations, $transformer, Location::class);
     }
@@ -331,42 +323,42 @@ class CompanyTransformer extends EntityTransformer
 
     public function includeBankTransactionRules(Company $company)
     {
-        $transformer = new BankTransactionRuleTransformer($this->serializer);
+        $transformer = new BankTransactionRuleTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->bank_transaction_rules, $transformer, BankTransactionRule::class);
     }
 
     public function includeBankIntegrations(Company $company)
     {
-        $transformer = new BankIntegrationTransformer($this->serializer);
+        $transformer = new BankIntegrationTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->bank_integrations, $transformer, BankIntegration::class);
     }
 
     public function includeTokensHashed(Company $company)
     {
-        $transformer = new CompanyTokenHashedTransformer($this->serializer);
+        $transformer = new CompanyTokenHashedTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->tokens_hashed, $transformer, CompanyToken::class);
     }
 
     public function includeWebhooks(Company $company)
     {
-        $transformer = new WebhookTransformer($this->serializer);
+        $transformer = new WebhookTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->webhooks, $transformer, Webhook::class);
     }
 
     public function includeActivities(Company $company)
     {
-        $transformer = new ActivityTransformer($this->serializer);
+        $transformer = new ActivityTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->activities, $transformer, Activity::class);
     }
 
     public function includeUsers(Company $company)
     {
-        $transformer = new UserTransformer($this->serializer);
+        $transformer = new UserTransformer($this->serializer, $this->user);
 
         $users = $company->users->map(function ($user) use ($company) {
             $user->company_id = $company->id;
@@ -379,154 +371,158 @@ class CompanyTransformer extends EntityTransformer
 
     public function includeCompanyGateways(Company $company)
     {
-        $transformer = new CompanyGatewayTransformer($this->serializer);
+        $transformer = new CompanyGatewayTransformer($this->serializer, $this->user);
+
+        if($this->user && !$this->user->isAdmin()){
+            return $this->includeCollection(collect(), $transformer, CompanyGateway::class);
+        }
 
         return $this->includeCollection($company->company_gateways, $transformer, CompanyGateway::class);
     }
 
     public function includeClients(Company $company)
     {
-        $transformer = new ClientTransformer($this->serializer);
+        $transformer = new ClientTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->clients, $transformer, Client::class);
     }
 
     public function includeProjects(Company $company)
     {
-        $transformer = new ProjectTransformer($this->serializer);
+        $transformer = new ProjectTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->projects, $transformer, Project::class);
     }
 
     public function includeTasks(Company $company)
     {
-        $transformer = new TaskTransformer($this->serializer);
+        $transformer = new TaskTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->tasks, $transformer, Task::class);
     }
 
     public function includeExpenses(Company $company)
     {
-        $transformer = new ExpenseTransformer($this->serializer);
+        $transformer = new ExpenseTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->expenses, $transformer, Expense::class);
     }
 
     public function includeVendors(Company $company)
     {
-        $transformer = new VendorTransformer($this->serializer);
+        $transformer = new VendorTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->vendors, $transformer, Vendor::class);
     }
 
     public function includeGroups(Company $company)
     {
-        $transformer = new GroupSettingTransformer($this->serializer);
+        $transformer = new GroupSettingTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->groups, $transformer, GroupSetting::class);
     }
 
     public function includeInvoices(Company $company)
     {
-        $transformer = new InvoiceTransformer($this->serializer);
+        $transformer = new InvoiceTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->invoices, $transformer, Invoice::class);
     }
 
     public function includeRecurringInvoices(Company $company)
     {
-        $transformer = new RecurringInvoiceTransformer($this->serializer);
+        $transformer = new RecurringInvoiceTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->recurring_invoices, $transformer, RecurringInvoice::class);
     }
 
     public function includeRecurringExpenses(Company $company)
     {
-        $transformer = new RecurringExpenseTransformer($this->serializer);
+        $transformer = new RecurringExpenseTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->recurring_expenses, $transformer, RecurringExpense::class);
     }
 
     public function includeQuotes(Company $company)
     {
-        $transformer = new QuoteTransformer($this->serializer);
+        $transformer = new QuoteTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->quotes, $transformer, Quote::class);
     }
 
     public function includeCredits(Company $company)
     {
-        $transformer = new CreditTransformer($this->serializer);
+        $transformer = new CreditTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->credits, $transformer, Credit::class);
     }
 
     public function includeAccount(Company $company)
     {
-        $transformer = new AccountTransformer($this->serializer);
+        $transformer = new AccountTransformer($this->serializer, $this->user);
 
         return $this->includeItem($company->account, $transformer, Account::class);
     }
 
     public function includeTaxRates(Company $company)
     {
-        $transformer = new TaxRateTransformer($this->serializer);
+        $transformer = new TaxRateTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->tax_rates, $transformer, TaxRate::class);
     }
 
     public function includeProducts(Company $company)
     {
-        $transformer = new ProductTransformer($this->serializer);
+        $transformer = new ProductTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->products, $transformer, Product::class);
     }
 
     public function includePayments(Company $company)
     {
-        $transformer = new PaymentTransformer($this->serializer);
+        $transformer = new PaymentTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->payments, $transformer, Payment::class);
     }
 
     public function includeDesigns(Company $company)
     {
-        $transformer = new DesignTransformer($this->serializer);
+        $transformer = new DesignTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->designs()->get(), $transformer, Design::class);
     }
 
     public function includeLedger(Company $company)
     {
-        $transformer = new CompanyLedgerTransformer($this->serializer);
+        $transformer = new CompanyLedgerTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->ledger, $transformer, CompanyLedger::class);
     }
 
     public function includePaymentTerms(Company $company)
     {
-        $transformer = new PaymentTermTransformer($this->serializer);
+        $transformer = new PaymentTermTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->payment_terms()->get(), $transformer, PaymentTerm::class);
     }
 
     public function includeSystemLogs(Company $company)
     {
-        $transformer = new SystemLogTransformer($this->serializer);
+        $transformer = new SystemLogTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->system_logs, $transformer, SystemLog::class);
     }
 
     public function includeSubscriptions(Company $company)
     {
-        $transformer = new SubscriptionTransformer($this->serializer);
+        $transformer = new SubscriptionTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->subscriptions, $transformer, Subscription::class);
     }
 
     public function includePurchaseOrders(Company $company)
     {
-        $transformer = new PurchaseOrderTransformer($this->serializer);
+        $transformer = new PurchaseOrderTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company->purchase_orders, $transformer, PurchaseOrder::class);
     }

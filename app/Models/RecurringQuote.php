@@ -102,7 +102,7 @@ use Laracasts\Presenter\PresentableTrait;
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Quote> $quotes
  * @property-read int|null $quotes_count
  * @property-read \App\Models\User $user
- * @method static \Illuminate\Database\Eloquent\Builder|BaseModel company()
+ * 
  * @method static \Illuminate\Database\Eloquent\Builder|BaseModel exclude($columns)
  * @method static \Database\Factories\RecurringQuoteFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder|RecurringQuote filter(\App\Filters\QueryFilters $filters)
@@ -221,6 +221,7 @@ class RecurringQuote extends BaseModel
     protected $casts = [
         'settings' => 'object',
         'line_items' => 'object',
+        'is_amount_discount' => 'bool',
         'backup' => 'object',
         'updated_at' => 'timestamp',
         'created_at' => 'timestamp',

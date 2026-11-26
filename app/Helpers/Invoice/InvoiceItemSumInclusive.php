@@ -18,6 +18,7 @@ use App\Models\Client;
 use App\Models\Credit;
 use App\Models\Vendor;
 use App\Models\Invoice;
+use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\RecurringQuote;
 use App\Models\RecurringInvoice;
@@ -116,6 +117,8 @@ class InvoiceItemSumInclusive
 
     private $tax_collection;
 
+    private $reverse_tax_collection;
+
     private $custom_surcharge_map;
 
     private bool $calc_tax = false;
@@ -129,6 +132,7 @@ class InvoiceItemSumInclusive
     public function __construct(RecurringInvoice|Invoice|Quote|Credit|PurchaseOrder|RecurringQuote $invoice)
     {
         $this->tax_collection = collect([]);
+        $this->reverse_tax_collection = collect([]);
         $this->custom_surcharge_map = collect([]);
 
         $this->total_discount = 0;
@@ -161,6 +165,16 @@ class InvoiceItemSumInclusive
     private function calcLineItems()
     {
         foreach ($this->invoice->line_items as $this->item) {
+            if ($this->item->is_optional ?? false) {
+                $this->item->line_total = 0;
+                $this->item->gross_line_total = 0;
+                $this->item->tax_amount = 0;
+                $this->item->net_cost = 0;
+                $this->line_items[] = $this->item;
+
+                continue;
+            }
+
             $this->sumLineItem()
                 ->setDiscount()
                 ->calcTaxes()
@@ -188,7 +202,7 @@ class InvoiceItemSumInclusive
 
     private function setDiscount()
     {
-        if ($this->lineItemUsesAmountDiscount()) {
+        if ($this->invoice->is_amount_discount) {
             $discount = $this->formatValue($this->item->discount, $this->currency->precision);
             $this->setLineTotal($this->getLineTotal() - $discount);
             $this->total_discount += $this->item->discount;
@@ -197,22 +211,10 @@ class InvoiceItemSumInclusive
             $this->total_discount += ($this->item->line_total * ($this->item->discount / 100));
         }
 
-        if (!$this->invoice->is_amount_discount) {
-            $this->item->is_amount_discount = false;
-        }
+        $this->item->is_amount_discount = $this->invoice->is_amount_discount;
 
         return $this;
     }
-
-    private function lineItemUsesAmountDiscount(): bool
-    {
-        if (!$this->invoice->is_amount_discount) {
-            return false;
-        }
-
-        return (bool) $this->item->is_amount_discount;
-    }
-
 
     /**
      * Attempts to calculate taxes based on the clients location
@@ -237,6 +239,17 @@ class InvoiceItemSumInclusive
 
         $this->item->tax_name3 = $this->rule->tax_name3;
         $this->item->tax_rate3 = round($this->rule->tax_rate3, $precision);
+        if ($this->invoice instanceof RecurringInvoice || ($this->invoice->status_id ?? Invoice::STATUS_DRAFT) === Invoice::STATUS_DRAFT) {
+            $reverse_tax_rate = intval($this->item->tax_id ?? 0) === Product::PRODUCT_TYPE_REVERSE_TAX
+                ? $this->rule->getReverseTaxRate()
+                : 0;
+
+            if ($reverse_tax_rate > 0) {
+                $this->item->reverse_tax_rate = $reverse_tax_rate;
+            } else {
+                unset($this->item->reverse_tax_rate);
+            }
+        }
 
         $this->invoice->tax_name1 = '';
         $this->invoice->tax_rate1 = 0;
@@ -270,6 +283,7 @@ class InvoiceItemSumInclusive
         }
 
         $amount = $this->item->line_total - ($this->item->line_total * ($this->invoice->discount / 100));
+        $this->groupReverseTax($amount);
 
         $rates = [$this->item->tax_rate1, $this->item->tax_rate2, $this->item->tax_rate3];
 
@@ -280,7 +294,7 @@ class InvoiceItemSumInclusive
         $item_tax = $inclusive['tax'];
         [$item_tax_rate1_total, $item_tax_rate2_total, $item_tax_rate3_total] = $inclusive['components'];
 
-        if (strlen($this->item->tax_name1) > 1) {
+        if (strlen($this->item->tax_name1) > 1 && !$this->hasReverseTaxDisclosure()) {
             $this->groupTax($this->item->tax_name1, $this->item->tax_rate1, $item_tax_rate1_total, $amount, $this->item->tax_id ?? '1', $net);
         }
 
@@ -383,6 +397,30 @@ class InvoiceItemSumInclusive
         $this->tax_collection->push(collect($group_tax));
     }
 
+    private function groupReverseTax(float $amount): void
+    {
+        if (!$this->hasReverseTaxDisclosure()) {
+            return;
+        }
+
+        $rate = (float) $this->item->reverse_tax_rate;
+
+        $this->reverse_tax_collection->push(collect([
+            'key' => 'reverse_tax_' . $rate,
+            'total' => $this->calcAmountLineTax($rate, $amount),
+            'tax_name' => ctrans('texts.reverse_tax') . ' ' . Number::formatValueNoTrailingZeroes($rate, $this->client) . '%',
+            'tax_id' => Product::PRODUCT_TYPE_REVERSE_TAX,
+            'tax_rate' => $rate,
+            'base_amount' => $amount,
+        ]));
+    }
+
+    private function hasReverseTaxDisclosure(): bool
+    {
+        return intval($this->item->tax_id ?? 0) === Product::PRODUCT_TYPE_REVERSE_TAX
+            && (float) ($this->item->reverse_tax_rate ?? 0) > 0;
+    }
+
     public function getTotalDiscount()
     {
         return $this->total_discount;
@@ -436,6 +474,18 @@ class InvoiceItemSumInclusive
         return $this;
     }
 
+    public function getGroupedReverseTaxes()
+    {
+        return $this->reverse_tax_collection;
+    }
+
+    public function setGroupedReverseTaxes($group_taxes): self
+    {
+        $this->reverse_tax_collection = $group_taxes;
+
+        return $this;
+    }
+
     public function getSubTotal()
     {
         return $this->sub_total;
@@ -466,13 +516,20 @@ class InvoiceItemSumInclusive
     public function calcTaxesWithAmountDiscount()
     {
         $this->setGroupedTaxes(collect([]));
+        $this->setGroupedReverseTaxes(collect([]));
 
         foreach ($this->line_items as $this->item) {
+            if ($this->item->is_optional ?? false) {
+                continue;
+            }
+
             if ($this->sub_total == 0) {
                 $amount = $this->item->line_total;
             } else {
                 $amount = $this->item->line_total - ($this->invoice->discount * ($this->item->line_total / $this->sub_total));
             }
+
+            $this->groupReverseTax($amount);
 
             $rates = [$this->item->tax_rate1, $this->item->tax_rate2, $this->item->tax_rate3];
 
@@ -481,7 +538,7 @@ class InvoiceItemSumInclusive
             $item_tax = $inclusive['tax'];
             [$item_tax_rate1_total, $item_tax_rate2_total, $item_tax_rate3_total] = $inclusive['components'];
 
-            if ($item_tax_rate1_total != 0) {
+            if ($item_tax_rate1_total != 0 && !$this->hasReverseTaxDisclosure()) {
                 $this->groupTax($this->item->tax_name1, $this->item->tax_rate1, $item_tax_rate1_total, $amount, $this->item->tax_id ?? '1', $net);
             }
 

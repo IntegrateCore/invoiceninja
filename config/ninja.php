@@ -6,8 +6,26 @@ return [
     'admin_token' => env('NINJA_ADMIN_TOKEN', ''),
     'license_url' => 'https://app.invoiceninja.com',
     'react_url' => env('REACT_URL', env('APP_URL', '')),
+    // Hosted only, the Flutter web app's host (https://admin.invoicing.co). Set it with HOSTED_LANDING,
+    // or its calendar OAuth returns to the landing page.
+    'flutter_web_url' => env('FLUTTER_WEB_URL', ''),
+    // Hosted only: / serves the landing page (resources/views/landing) instead of the old Flutter app.
+    'hosted_landing' => env('HOSTED_LANDING', false),
     'calendar' => [
         'native_redirect' => env('CALENDAR_NATIVE_REDIRECT', 'invoiceninja://calendar_connection/complete'),
+    ],
+    'app_links' => [
+        'native_scheme' => env('APP_LINKS_NATIVE_SCHEME', 'invoiceninja://app'),
+        'android_package' => env('APP_LINKS_ANDROID_PACKAGE', 'com.invoiceninja.admin'),
+        'android_fingerprints' => env('APP_LINKS_ANDROID_FINGERPRINTS', 'BB:BC:8B:FB:72:4E:F2:56:77:30:31:B1:C9:22:C0:51:D3:5D:EE:3F:CE:BD:59:3A:F7:11:2F:AB:46:7D:E8:88,D1:7F:AC:8D:58:95:99:23:1C:31:CE:52:A5:E6:FD:E7:2B:BA:9B:7D:DC:8B:18:03:07:E2:5C:C6:88:03:C1:7D'),
+        'apple_app_ids' => env('APP_LINKS_APPLE_APP_IDS', 'NPC44Y2C98.com.invoiceninja.admin'),
+    ],
+    'passkeys' => [
+        // Web origins other than the relying party's own that may sign in with its passkeys (WebAuthn Related
+        // Origin Requests), e.g. https://admin.invoicing.co. Each must also be in the relying party's
+        // /.well-known/webauthn, or the browser refuses before the server is asked. A listed origin can sign
+        // in and register, so list only first-party, hardened ones.
+        'related_origins' => env('PASSKEY_RELATED_ORIGINS', ''),
     ],
     'production' => env('NINJA_PROD', false),
     'license' => env('NINJA_LICENSE', ''),
@@ -21,9 +39,9 @@ return [
     'require_https' => env('REQUIRE_HTTPS', true),
     'app_url' => rtrim(env('APP_URL', ''), '/'),
     'app_domain' => env('APP_DOMAIN', 'invoicing.co'),
-    'app_version' => env('APP_VERSION', '5.13.43'),
-    'app_tag' => env('APP_TAG', '5.13.43'),
-    'minimum_client_version' => '5.0.16',
+    'app_version' => env('APP_VERSION', '5.14.0'),
+    'app_tag' => env('APP_TAG', '5.14.0'),
+    'minimum_client_version' => '5.0.203',
     'terms_version' => '1.0.1',
     'api_secret' => env('API_SECRET', ''),
     'google_maps_api_key' => env('GOOGLE_MAPS_API_KEY'),
@@ -42,6 +60,7 @@ return [
     'phantomjs_secret' => env('PHANTOMJS_SECRET', false),
     'phantomjs_pdf_generation' => env('PHANTOMJS_PDF_GENERATION', false),
     'pdf_generator' => env('PDF_GENERATOR', false),
+    'pdf_generator_real' => env('PDF_GENERATOR_REAL', 'snappdf'),
     'gotenberg_url' => env('GOTENBERG_API_URL', 'http://localhost:3000'),
     'trusted_proxies' => env('TRUSTED_PROXIES', false),
     'is_docker' => env('IS_DOCKER', false),
@@ -107,7 +126,7 @@ return [
     'contact' => [
         'email' => env('MAIL_FROM_ADDRESS'),
         'from_name' => env('MAIL_FROM_NAME'),
-        'ninja_official_contact' => env('NINJA_OFFICIAL_CONTACT', 'contact@integratecore.net'),
+        'ninja_official_contact' => env('NINJA_OFFICIAL_CONTACT', 'contact@invoiceninja.com'),
     ],
     'cached_tables' => [
         'banks' => App\Models\Bank::class,
@@ -200,6 +219,7 @@ return [
     'ninja_hosted_secret' => env('NINJA_HOSTED_SECRET', ''),
     'ninja_hosted_header' => env('NINJA_HEADER', ''),
     'ninja_connect_secret' => env('NINJA_CONNECT_SECRET', ''),
+    'ninja_connect_secret_v2' => env('NINJA_CONNECT_SECRET_V2', ''),
     'internal_queue_enabled' => env('INTERNAL_QUEUE_ENABLED', true),
     'ninja_apple_api_key' => env('APPLE_API_KEY', false),
     'ninja_apple_private_key' => env('APPLE_PRIVATE_KEY', false),

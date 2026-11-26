@@ -127,15 +127,25 @@ trait ChartCalculations
 
     public function getActiveQuotes($data): int|float
     {
+        $today = $this->companyToday();
+
         $result = 0;
 
         $q = Quote::query()
-                    ->withTrashed()
                     ->where('company_id', $this->company->id)
-                    ->where('is_deleted', 0)
-                    ->whereIn('status_id', [2,3])
-                    ->where(function ($qq) {
-                        $qq->where('due_date', '>=', now()->toDateString())->orWhereNull('due_date');
+                    ->where('is_deleted', false)
+                    ->whereNull('invoice_id')
+                    ->whereIn('status_id', [
+                        Quote::STATUS_SENT,
+                        Quote::STATUS_APPROVED,
+                    ])
+                    ->whereHas('client', function ($query) {
+                        $query->whereNull('clients.deleted_at')
+                            ->where('clients.is_deleted', false);
+                    })
+                    ->where(function ($query) use ($today) {
+                        $query->where('due_date', '>=', $today)
+                            ->orWhereNull('due_date');
                     });
 
         if (in_array($data['period'], ['current','previous']) && ($data['date_range'] ?? null) !== 'all_time') {
@@ -155,15 +165,21 @@ trait ChartCalculations
 
     public function getUnapprovedQuotes($data): int|float
     {
+        $today = $this->companyToday();
+
         $result = 0;
 
         $q = Quote::query()
-                    ->withTrashed()
                     ->where('company_id', $this->company->id)
                     ->where('is_deleted', 0)
-                    ->whereIn('status_id', [2])
-                    ->where(function ($qq) {
-                        $qq->where('due_date', '>=', now()->toDateString())->orWhereNull('due_date');
+                    ->whereNull('invoice_id')
+                    ->where('status_id', Quote::STATUS_SENT)
+                    ->whereHas('client', function ($query) {
+                        $query->whereNull('clients.deleted_at')
+                            ->where('clients.is_deleted', false);
+                    })
+                    ->where(function ($qq) use ($today) {
+                        $qq->where('due_date', '>=', $today)->orWhereNull('due_date');
                     });
 
         if (in_array($data['period'], ['current','previous']) && ($data['date_range'] ?? null) !== 'all_time') {

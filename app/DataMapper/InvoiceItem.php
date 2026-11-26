@@ -12,6 +12,7 @@
 
 namespace App\DataMapper;
 
+#[\AllowDynamicProperties]
 class InvoiceItem
 {
     public $quantity = 0;
@@ -29,6 +30,8 @@ class InvoiceItem
     public $discount = 0;
 
     public $is_amount_discount = false;
+
+    public $is_optional = false;
 
     public $tax_name1 = '';
 
@@ -88,6 +91,7 @@ class InvoiceItem
         'notes' => 'string',
         'discount' => 'float',
         'is_amount_discount' => 'bool',
+        'is_optional' => 'bool',
         'tax_name1' => 'string',
         'tax_name2' => 'string',
         'tax_name3' => 'string',

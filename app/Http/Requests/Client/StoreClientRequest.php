@@ -15,6 +15,7 @@ namespace App\Http\Requests\Client;
 use App\DataMapper\ClientSettings;
 use App\DataMapper\CompanySettings;
 use App\Http\Requests\Request;
+use App\Http\ValidationRules\EInvoice\ValidClientScheme;
 use App\Http\ValidationRules\Ninja\CanStoreClientsRule;
 use App\Http\ValidationRules\ValidClientGroupSettingsRule;
 use App\Models\Client;
@@ -52,6 +53,7 @@ class StoreClientRequest extends Request
         $rules['file.*'] = $this->fileValidation();
         $rules['documents'] = 'bail|sometimes|array';
         $rules['documents.*'] = $this->fileValidation();
+        $rules['e_invoice'] = ['sometimes','nullable', new ValidClientScheme()];
 
         /* Ensure we have a client name, and that all emails are unique*/
         //$rules['name'] = 'required|min:1';
@@ -76,6 +78,7 @@ class StoreClientRequest extends Request
 
         $rules['number'] = ['bail', 'nullable', Rule::unique('clients')->where('company_id', $user->company()->id)];
         $rules['size_id'] = ['bail', 'nullable', 'sometimes', 'exists:sizes,id'];
+        $rules['industry_id'] = ['bail', 'nullable', 'sometimes', 'exists:industries,id'];
         $rules['id_number'] = ['bail', 'nullable', Rule::unique('clients')->where('company_id', $user->company()->id)];
         $rules['classification'] = 'bail|sometimes|nullable|in:individual,business,company,partnership,trust,charity,government,other';
         $rules['shipping_country_id'] = 'integer|nullable|exists:countries,id';

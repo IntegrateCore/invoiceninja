@@ -92,6 +92,9 @@ class InvoiceController extends Controller
         $default_flow = auth()->guard('contact')->user()->client->getSetting('payment_flow') == 'default';
 
         if ($default_flow) {
+
+            $data['gateway_available'] = $invoice->isPayable() && ! empty(auth()->guard('contact')->user()->client->service()->getPaymentMethods(-1));
+
             $docuninja_active = $invoice->company->docuninjaActive();
             $signature_required = $invoice->client->getSetting('require_invoice_signature');
             $signature_accepted = $invoice->sync?->dn_completed;
@@ -256,7 +259,10 @@ class InvoiceController extends Controller
         $settings = auth()->guard('contact')->user()->client->getMergedSettings();
         $variables = false;
 
-        if (($invitation = $invoices->first()->invitations()->first() ?? false) && $settings->show_accept_invoice_terms) {
+        /** @var \Illuminate\Support\Collection<\App\Models\Invoice> $invoices */
+        $invitation = $invoices->first()->invitations()->first();
+
+        if ($invitation && $settings->show_accept_invoice_terms) {
             $variables = (new HtmlEngine($invitation))->generateLabelsAndValues();
         }
 
@@ -313,7 +319,7 @@ class InvoiceController extends Controller
                             ->get();
 
         //generate pdf's of invoices locally
-        if (! $invoices || $invoices->count() == 0) {
+        if ($invoices->isEmpty()) {
             return back()->with(['message' => ctrans('texts.no_items_selected')]);
         }
 

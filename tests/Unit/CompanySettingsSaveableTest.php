@@ -36,7 +36,7 @@ class CompanySettingsSaveableTest extends TestCase
 
         $this->assertTrue(property_exists(CompanySettings::defaults(), 'auto_archive_invoice'));
 
-        $this->assertFalse(property_exists($filtered, 'auto_archive_invoice'));
+        $this->assertTrue(property_exists($filtered, 'auto_archive_invoice'));
     }
 
     public function testFreePlanCastsExcludeEveryEmailTemplateProperty(): void
@@ -73,6 +73,16 @@ class CompanySettingsSaveableTest extends TestCase
                 "Free plan filter left {$key} on the settings object"
             );
         }
+    }
+
+    public function testFreePlanKeepsHiddenPaymentTypes(): void
+    {
+        $settings = CompanySettings::defaults();
+        $settings->hidden_payment_types = '3,25';
+
+        $filtered = $this->filterSaver($settings);
+
+        $this->assertSame('3,25', $filtered->hidden_payment_types);
     }
 
     private function filterSaver($settings)

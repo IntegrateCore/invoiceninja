@@ -484,7 +484,7 @@ class StorecoveCustomerPartyIdentifiersTest extends TestCase
     }
 
     /**
-     * FI: primary routing/legal scheme FI:OVT plus tax scheme FI:VAT — two canonical Storecove lines when both values match formats.
+     * FI: primary routing/legal scheme FI:OVT2 plus tax scheme FI:VAT — two canonical Storecove lines when both values match formats.
      */
     public function testFinlandOvtAndVatProduceDualPublicIdentifierLines(): void
     {
@@ -519,10 +519,44 @@ class StorecoveCustomerPartyIdentifiersTest extends TestCase
         $pairs = CountryFactory::make('FI')->storecoveCustomerPartyPublicIdentifiers($invoice->client, $invoice, $router);
 
         $this->assertCount(2, $pairs);
-        $this->assertSame('FI:OVT', $pairs[0]['scheme']);
+        $this->assertSame('FI:OVT2', $pairs[0]['scheme']);
         $this->assertSame('003712345678', $pairs[0]['id']);
         $this->assertSame('FI:VAT', $pairs[1]['scheme']);
         $this->assertSame('FI12345678', $pairs[1]['id']);
+    }
+
+    /**
+     * FI: buyer EndpointID is OVT from id_number; routing_id (FI:OPID) must not be used as Peppol endpoint.
+     */
+    public function testFinlandEndpointSchemeUsesOvtFromIdNumberWhenRoutingIdIsOpid(): void
+    {
+        $this->makeTestData();
+
+        $company = Company::factory()->create([
+            'account_id' => $this->account->id,
+        ]);
+
+        $fi = Country::where('iso_3166_2', 'FI')->first();
+        $this->assertNotNull($fi);
+
+        $client = Client::factory()->create([
+            'company_id' => $company->id,
+            'user_id' => $this->user->id,
+            'country_id' => $fi->id,
+            'classification' => 'business',
+            'vat_number' => 'FI09824102',
+            'id_number' => '003709824102',
+            'routing_id' => '003708599126',
+        ]);
+
+        $client->load('country');
+
+        $router = new StorecoveRouter();
+
+        $resolved = CountryFactory::make('FI')->resolveClientEndpointScheme($client, $router);
+
+        $this->assertSame('0216', $resolved['scheme']);
+        $this->assertSame('003709824102', $resolved['id']);
     }
 
     /**

@@ -111,7 +111,6 @@ class Task extends BaseModel
         'description',
         'is_running',
         'time_log',
-        'consulting_hours_consumed',
         'status_id',
         'status_sort_order', //deprecated
         'invoice_documents',
@@ -403,8 +402,8 @@ class Task extends BaseModel
 
     public function taskCompanyValue(): float
     {
-        $client_currency = $this->client->getSetting('currency_id');
         $company_currency = $this->company->getSetting('currency_id');
+        $client_currency = $this->client?->getSetting('currency_id') ?? $company_currency;
 
         if ($client_currency != $company_currency) {
             $converter = new CurrencyApi();
