@@ -546,9 +546,7 @@ class HelcimPaymentDriver extends BaseDriver
 
             if ($transaction->isCompleted()) {
                 if ($lockedPayment->status_id === Payment::STATUS_PENDING && ! $lockedPayment->is_deleted) {
-                    $lockedPayment->status_id = Payment::STATUS_COMPLETED;
-                    $lockedPayment->saveQuietly();
-
+                    $lockedPayment->service()->completePendingPayment();
                     return 'completed';
                 }
 
@@ -573,7 +571,7 @@ class HelcimPaymentDriver extends BaseDriver
                     $client->company,
                     $client,
                     "Helcim ACH payment {$transaction->transactionId} failed with status {$transaction->statusDescription()}."
-                );
+                )->afterCommit();
 
                 return 'failed';
             }

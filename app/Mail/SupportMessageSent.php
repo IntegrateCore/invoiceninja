@@ -48,17 +48,17 @@ class SupportMessageSent extends Mailable
          * we are going to bundle system-level info
          * and last 10 lines of laravel.log file.
          */
-        if (Ninja::isSelfHost() && $this->send_logs !== false) {
-            $system_info = Ninja::getDebugInfo();
+        // if (Ninja::isSelfHost() && $this->send_logs !== false) {
+        //     $system_info = Ninja::getDebugInfo();
 
-            $log_file = new SplFileObject(sprintf('%s/laravel.log', base_path('storage/logs')));
+        //     $log_file = new SplFileObject(sprintf('%s/laravel.log', base_path('storage/logs')));
 
-            $log_file->seek(PHP_INT_MAX);
-            $last_line = $log_file->key();
+        //     $log_file->seek(PHP_INT_MAX);
+        //     $last_line = $log_file->key();
 
-            $lines = new LimitIterator($log_file, max(0, $last_line - 100), $last_line);
-            $log_lines = iterator_to_array($lines);
-        }
+        //     $lines = new LimitIterator($log_file, max(0, $last_line - 100), $last_line);
+        //     $log_lines = iterator_to_array($lines);
+        // }
 
         $account = auth()->user()->account;
 
@@ -91,15 +91,26 @@ class SupportMessageSent extends Mailable
             $subject = "{$priority}Self Hosted :: {$plan} :: {$is_large}{$platform}{$migrated} :: " . date('M jS, g:ia');
         }
 
+        foreach ($this->data['attachments'] ?? [] as $file) {
+            $this->attach($file->getRealPath(), [
+                'as' => $file->getClientOriginalName(),
+                'mime' => $file->getMimeType(),
+            ]);
+        }
+
+        $view_data = [
+            'support_message' => nl2br($this->data['message']),
+            'support_message_plain' => $this->data['message'],
+            'system_info' => $system_info,
+            'laravel_log' => $log_lines,
+            'logo' => $company->present()->logo(),
+            'settings' => $company->settings,
+        ];
+
         return $this->from(config('mail.from.address'), $user->present()->name())
                 ->replyTo($user->email, $user->present()->name())
                 ->subject($subject)
-                ->view('email.support.message', [
-                    'support_message' => nl2br($this->data['message']),
-                    'system_info' => $system_info,
-                    'laravel_log' => $log_lines,
-                    'logo' => $company->present()->logo(),
-                    'settings' => $company->settings,
-                ]);
+                ->text('email.support.message_text', $view_data)
+                ->view('email.support.message', $view_data);
     }
 }

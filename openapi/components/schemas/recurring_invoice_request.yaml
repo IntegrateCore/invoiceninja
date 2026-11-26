@@ -1,8 +1,6 @@
     RecurringInvoiceRequest:
       required:
         - client_id
-        - date
-        - due_date
         - frequency_id
       properties:
         client_id:
@@ -56,3 +54,9 @@
           description: 'An array of objects which define the line items of the invoice'
           items:
             $ref: '#/components/schemas/InvoiceItem'
+        tags:
+          description: 'Full sync array of hashed tag IDs. Omit to leave existing tags unchanged; send [] to detach all tags.'
+          type: array
+          items:
+            type: string
+            example: Opnel5aKBz

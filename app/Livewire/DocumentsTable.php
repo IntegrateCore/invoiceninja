@@ -26,20 +26,24 @@ use App\Models\Document;
 use App\Libraries\MultiDB;
 use Livewire\WithPagination;
 use App\Models\RecurringInvoice;
+use App\Http\ViewComposers\PortalComposer;
 use App\Utils\Traits\WithSorting;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 
 class DocumentsTable extends Component
 {
     use WithPagination;
     use WithSorting;
 
+    #[Locked]
     public int $client_id;
 
     public int $per_page = 10;
 
     public string $tab = 'documents';
 
+    #[Locked]
     public string $db;
 
     protected $query;
@@ -71,6 +75,7 @@ class DocumentsTable extends Component
 
     public function updateResources(string $resource)
     {
+        $resource = $this->isResourceEnabled($resource) ? $resource : 'documents';
         $this->tab = $resource;
 
         switch ($resource) {
@@ -114,6 +119,32 @@ class DocumentsTable extends Component
                 $this->query = $this->documents();
                 break;
         }
+    }
+
+    private function isResourceEnabled(string $resource): bool
+    {
+        if (in_array($resource, ['documents', 'payments'], true)) {
+            return true;
+        }
+
+        $module = match ($resource) {
+            'credits' => PortalComposer::MODULE_CREDITS,
+            'invoices' => PortalComposer::MODULE_INVOICES,
+            'projects' => PortalComposer::MODULE_PROJECTS,
+            'quotes' => PortalComposer::MODULE_QUOTES,
+            'recurringInvoices' => PortalComposer::MODULE_RECURRING_INVOICES,
+            'tasks' => PortalComposer::MODULE_TASKS,
+            default => null,
+        };
+
+        $contact = auth()->guard('contact')->user();
+
+        if (! $module || ! ($contact->company->enabled_modules & $module)) {
+            return false;
+        }
+
+        return ! in_array($resource, ['projects', 'tasks'], true)
+            || (bool) $contact->client->getSetting('enable_client_portal_tasks');
     }
 
     protected function documents()

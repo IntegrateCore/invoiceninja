@@ -1,5 +1,13 @@
     PaymentRequest:
       properties:
+        category_id:
+          description: 'The unique identifier of the payment category'
+          type: string
+          example: Opnel5aKBz
+        idempotency_key:
+          description: 'Unique key to ensure idempotent payment processing'
+          type: string
+          example: 'key_1234567890abcdef'
         client_id:
           description: 'The client hashed id'
           type: string
@@ -49,5 +57,11 @@
           description: 'The payment number - is a unique alpha numeric number per payment per company'
           type: string
           example: PAY_101
+        tags:
+          description: 'Full sync array of hashed tag IDs. Omit to leave existing tags unchanged; send [] to detach all tags.'
+          type: array
+          items:
+            type: string
+            example: Opnel5aKBz
       type: object
     

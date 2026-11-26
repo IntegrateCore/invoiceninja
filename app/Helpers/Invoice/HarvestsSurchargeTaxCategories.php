@@ -82,13 +82,13 @@ trait HarvestsSurchargeTaxCategories
     }
 
     /**
-     * @return Collection<int, array{name: string, percentage: float, tax_id: string}>
+     * @return Collection
      */
     private function collectTaxCategoriesFromInvoice(): Collection
     {
         return collect([1, 2, 3])
             ->map(fn (int $i) => [
-                'name' => $this->invoice->{"tax_name{$i}"} ?? '',
+                'name' => (string) ($this->invoice->{"tax_name{$i}"} ?? ''),
                 'percentage' => (float) ($this->invoice->{"tax_rate{$i}"} ?? 0),
                 'tax_id' => '1',
             ])
@@ -101,7 +101,7 @@ trait HarvestsSurchargeTaxCategories
      */
     private function collectTaxCategoriesFromFirstLineItem(): Collection
     {
-        $first = collect($this->invoice->line_items)->first();
+        $first = collect($this->invoice->line_items)->first(fn ($item) => ! ($item->is_optional ?? false));
 
         if (! $first) {
             return collect();
@@ -109,7 +109,7 @@ trait HarvestsSurchargeTaxCategories
 
         return collect([1, 2, 3])
             ->map(fn (int $i) => [
-                'name' => $first->{"tax_name{$i}"} ?? '',
+                'name' => (string) ($first->{"tax_name{$i}"} ?? ''),
                 'percentage' => (float) ($first->{"tax_rate{$i}"} ?? 0),
                 'tax_id' => $first->tax_id ?? '1',
             ])

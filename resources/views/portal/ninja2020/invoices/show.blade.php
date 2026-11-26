@@ -5,7 +5,6 @@
     <meta name="show-invoice-terms" content="{{ $settings->show_accept_invoice_terms ? true : false }}">
     <meta name="require-invoice-signature" content="{{ $requires_signature }}">
     @include('portal.ninja2020.components.no-cache')
-    <script src="{{ asset('vendor/signature_pad@2.3.2/signature_pad.min.js') }}"></script>
 
 @endpush
 
@@ -64,7 +63,9 @@
                                 <input type="hidden" name="action" value="payment">
 
                                 @if($settings->client_portal_allow_under_payment || $settings->client_portal_allow_over_payment)
-                                    <button class="button button-primary bg-primary">{{ ctrans('texts.pay_now') }}</button>
+                                    @if($gateway_available)
+                                        <button class="button button-primary bg-primary">{{ ctrans('texts.pay_now') }}</button>
+                                    @endif
                                 @else
                                     @livewire('pay-now-dropdown', ['total' => $invoice->getPayableAmount(), 'company_id' => $company->id, 'db' => $company->db])
                                 @endif

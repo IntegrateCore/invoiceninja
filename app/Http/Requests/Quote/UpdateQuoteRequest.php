@@ -18,6 +18,7 @@ use App\Utils\Traits\ChecksEntityStatus;
 use App\Utils\Traits\CleanLineItems;
 use App\Utils\Traits\MakesHash;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpdateQuoteRequest extends Request
 {
@@ -78,6 +79,43 @@ class UpdateQuoteRequest extends Request
         return $this->globalRules($rules);
     }
 
+    public function withValidator(Validator $validator): void
+    {
+        if ($validator->errors()->isNotEmpty()) {
+            return;
+        }
+
+        $validator->after(function (Validator $validator): void {
+            $sending = $this->boolean('mark_sent')
+                || $this->boolean('send_email')
+                || $this->boolean('email');
+            $changingDueDate = $this->filled('due_date')
+                && $this->input('due_date') != $this->quote->due_date?->format('Y-m-d');
+
+            if (! $sending && ! $changingDueDate) {
+                return;
+            }
+
+            $candidate = clone $this->quote;
+
+            if (array_key_exists('due_date', $this->all())) {
+                $candidate->due_date = $this->input('due_date');
+            }
+
+            if (! $candidate->hasLapsedValidUntil()) {
+                return;
+            }
+
+            if ($sending) {
+                $validator->errors()->add('due_date', ctrans('texts.expired_quote_validation_error'));
+            }
+
+            if ($changingDueDate) {
+                $validator->errors()->add('due_date', ctrans('texts.quote_due_date_expired'));
+            }
+        });
+    }
+
     public function prepareForValidation()
     {
         $input = $this->all();
@@ -119,7 +157,6 @@ class UpdateQuoteRequest extends Request
         if (isset($input['terms']) && $this->hasHeader('X-REACT')) {
             $input['terms'] = str_replace("\n", "", $input['terms']);
         }
-
 
         $this->replace($input);
     }

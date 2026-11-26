@@ -555,7 +555,7 @@ class Hosted implements MethodInterface, LivewireMethodInterface
                 SystemLog::TYPE_CHIPINASIA,
                 $this->driver->client,
                 $this->driver->client->company,
-            );
+            )->afterCommit();
 
             return $payment;
         });
@@ -595,8 +595,7 @@ class Hosted implements MethodInterface, LivewireMethodInterface
             $payment->save();
         }
         else {
-            $payment->status_id = $newStatus;
-            $payment->save();
+            $payment = $payment->service()->completePendingPayment();   
         }
         
         SystemLogger::dispatch(

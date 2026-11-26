@@ -1,52 +1,64 @@
 <div>
     <div class="space-x-2 flex flex-row -mt-6 overflow-x-auto inline-block pb-4">
-        <button 
+        <button
             class="button border border-transparent hover:border-gray-600 {{ $tab === 'documents' ? 'border-gray-600' : '' }}"
-            wire:click="updateResources('documents')" />
+            wire:click="updateResources('documents')">
                 {{ ctrans('texts.my_documents') }}
         </button>
 
-        <button 
-            class="button border border-transparent hover:border-gray-600 {{ $tab === 'credits' ? 'border-gray-600' : '' }}"ž
-            wire:click="updateResources('credits')" />
+        @if($company->enabled_modules & \App\Http\ViewComposers\PortalComposer::MODULE_CREDITS)
+            <button
+                class="button border border-transparent hover:border-gray-600 {{ $tab === 'credits' ? 'border-gray-600' : '' }}"
+                wire:click="updateResources('credits')">
                 {{ ctrans('texts.credits') }}
-        </button>
+            </button>
+        @endif
 
-        <button 
-            class="button border border-transparent hover:border-gray-600 {{ $tab === 'invoices' ? 'border-gray-600' : '' }}"ž
-            wire:click="updateResources('invoices')" />
+        @if($company->enabled_modules & \App\Http\ViewComposers\PortalComposer::MODULE_INVOICES)
+            <button
+                class="button border border-transparent hover:border-gray-600 {{ $tab === 'invoices' ? 'border-gray-600' : '' }}"
+                wire:click="updateResources('invoices')">
                 {{ ctrans('texts.invoices') }}
-        </button>
+            </button>
+        @endif
 
-        <button 
-            class="button border border-transparent hover:border-gray-600 {{ $tab === 'payments' ? 'border-gray-600' : '' }}"ž
-            wire:click="updateResources('payments')" />
+        <button
+            class="button border border-transparent hover:border-gray-600 {{ $tab === 'payments' ? 'border-gray-600' : '' }}"
+            wire:click="updateResources('payments')">
                 {{ ctrans('texts.payments') }}
         </button>
 
-        <button 
-            class="button border border-transparent hover:border-gray-600 {{ $tab === 'projects' ? 'border-gray-600' : '' }}"ž
-            wire:click="updateResources('projects')" />
+        @if(($company->enabled_modules & \App\Http\ViewComposers\PortalComposer::MODULE_PROJECTS) && $settings->enable_client_portal_tasks)
+            <button
+                class="button border border-transparent hover:border-gray-600 {{ $tab === 'projects' ? 'border-gray-600' : '' }}"
+                wire:click="updateResources('projects')">
                 {{ ctrans('texts.projects') }}
-        </button>
+            </button>
+        @endif
 
-        <button 
-            class="button border border-transparent hover:border-gray-600 {{ $tab === 'quotes' ? 'border-gray-600' : '' }}"ž
-            wire:click="updateResources('quotes')" />
+        @if($company->enabled_modules & \App\Http\ViewComposers\PortalComposer::MODULE_QUOTES)
+            <button
+                class="button border border-transparent hover:border-gray-600 {{ $tab === 'quotes' ? 'border-gray-600' : '' }}"
+                wire:click="updateResources('quotes')">
                 {{ ctrans('texts.quotes') }}
-        </button>   
-        
-        <button 
-            class="button border border-transparent hover:border-gray-600 {{ $tab === 'recurringInvoices' ? 'border-gray-600' : '' }}"ž
-            wire:click="updateResources('recurringInvoices')" />
-                {{ ctrans('texts.recurring_invoices') }}
-        </button>   
+            </button>
+        @endif
 
-        <button 
-            class="button border border-transparent hover:border-gray-600 {{ $tab === 'tasks' ? 'border-gray-600' : '' }}"ž
-            wire:click="updateResources('tasks')" />
+        @if($company->enabled_modules & \App\Http\ViewComposers\PortalComposer::MODULE_RECURRING_INVOICES)
+            <button
+                class="button border border-transparent hover:border-gray-600 {{ $tab === 'recurringInvoices' ? 'border-gray-600' : '' }}"
+                wire:click="updateResources('recurringInvoices')">
+                {{ ctrans('texts.recurring_invoices') }}
+            </button>
+        @endif
+
+        @if(($company->enabled_modules & \App\Http\ViewComposers\PortalComposer::MODULE_TASKS) && $settings->enable_client_portal_tasks)
+            <button
+                class="button border border-transparent hover:border-gray-600 {{ $tab === 'tasks' ? 'border-gray-600' : '' }}"
+                wire:click="updateResources('tasks')">
                 {{ ctrans('texts.tasks') }}
-        </button>   
+            </button>
+        @endif
     </div>
 
     <div class="flex items-center justify-between mt-6">
@@ -68,7 +80,7 @@
     </div>
     <div class="-my-2 py-2 overflow-x-auto sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
         <div class="align-middle inline-block min-w-full overflow-hidden rounded">
-            <table class="min-w-full shadow rounded border border-gray-200 mt-4 credits-table">
+            <table data-portal-target="table" data-portal-table="documents" class="min-w-full shadow rounded border border-gray-200 mt-4 credits-table">
                 <thead>
                     <tr>
                         <th class="px-6 py-3 border-b border-gray-200 bg-primary text-left text-xs leading-4 font-medium text-white uppercase tracking-wider" />

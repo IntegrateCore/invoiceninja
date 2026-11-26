@@ -133,8 +133,6 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\VendorController;
 use App\Http\Controllers\WebCronController;
 use App\Http\Controllers\WebhookController;
-use App\Models\Location;
-use App\PaymentDrivers\BlockonomicsPaymentDriver;
 use App\PaymentDrivers\PayPalPPCPPaymentDriver;
 use Illuminate\Support\Facades\Route;
 
@@ -191,6 +189,7 @@ Route::group(['middleware' => ['throttle:api', 'token_auth', 'valid_json','local
 
     Route::post('charts/totals_v2', [ChartController::class, 'totalsV2'])->name('chart.totals_v2');
     Route::post('charts/chart_summary_v2', [ChartController::class, 'chart_summaryV2'])->name('chart.chart_summary_v2');
+    Route::post('charts/entity_totals', [ChartController::class, 'entity_totals'])->name('chart.entity_totals');
     Route::post('charts/calculated_fields', [ChartController::class, 'calculatedFields'])->name('chart.calculated_fields');
     Route::post('charts/analytics_summary', [ChartController::class, 'analytics_summary'])->name('chart.analytics_summary');
     Route::post('charts/analytics_totals', [ChartController::class, 'analytics_totals'])->name('chart.analytics_totals');
@@ -207,7 +206,7 @@ Route::group(['middleware' => ['throttle:api', 'token_auth', 'valid_json','local
     Route::resource('clients', ClientController::class); // name = (clients. index / create / show / update / destroy / edit
     Route::put('clients/{client}/upload', [ClientController::class, 'upload'])->name('clients.upload');
     Route::post('clients/{client}/purge', [ClientController::class, 'purge'])->name('clients.purge')->middleware('password_protected');
-    Route::post('clients/{client}/updateTaxData', [ClientController::class, 'updateTaxData'])->name('clients.update_tax_data')->middleware('throttle:3,1');
+    Route::post('clients/{client}/updateTaxData', [ClientController::class, 'updateTaxData'])->name('clients.update_tax_data')->middleware('throttle:10,1');
     Route::post('clients/{client}/{mergeable_client}/merge', [ClientController::class, 'merge'])->name('clients.merge')->middleware('password_protected');
     Route::post('clients/bulk', [ClientController::class, 'bulk'])->name('clients.bulk');
     Route::get('clients/{client}/file-library/browse', [\App\Http\Controllers\IntegrateCore\ClientFilesController::class, 'browse']);
@@ -219,6 +218,9 @@ Route::group(['middleware' => ['throttle:api', 'token_auth', 'valid_json','local
 
     Route::post('clients/{client}/documents', [ClientController::class, 'documents'])->name('clients.documents');
     Route::post('clients/{client}/show_settings', [ClientController::class, 'showSettings'])->name('clients.show_settings');
+    Route::post('clients/{client}/peppol_discovery', [ClientController::class, 'peppolDiscovery'])->name('clients.peppol_discovery');
+    Route::post('clients/{client}/check_vat', [ClientController::class, 'checkVat'])->name('clients.check_vat');
+    Route::get('clients/{client}/vat_status', [ClientController::class, 'vatStatus'])->name('clients.vat_status');
 
     Route::post('reactivate_email/{bounce_id}', [ClientController::class, 'reactivateEmail'])->name('clients.reactivate_email');
 
@@ -436,7 +438,7 @@ Route::group(['middleware' => ['throttle:api', 'token_auth', 'valid_json','local
     Route::post('task_schedulers/bulk', [TaskSchedulerController::class, 'bulk'])->name('task_schedulers.bulk');
 
     Route::get('scheduler', [SchedulerController::class, 'index']);
-    Route::post('support/messages/send', SendingController::class);
+    Route::post('support/messages/send', SendingController::class)->middleware('throttle:support-messages');;
 
     Route::post('self-update', [SelfUpdateController::class, 'update'])->middleware('password_protected');
     Route::post('self-update/check_version', [SelfUpdateController::class, 'checkVersion']);
@@ -572,3 +574,8 @@ Route::get('/health', function () {
         'message' => 'API is healthy',
     ]);
 })->middleware('throttle:20,1');
+
+// Native, opt-in, stateless Streamable HTTP. All verbs are authenticated.
+Route::middleware([\App\Mcp\Authenticate::class, 'throttle:api'])->group(function () {
+    \Laravel\Mcp\Facades\Mcp::web('api/v1/mcp', \App\Mcp\InvoiceNinjaServer::class)->name('api.mcp');
+});

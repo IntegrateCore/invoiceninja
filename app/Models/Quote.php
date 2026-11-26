@@ -12,6 +12,7 @@
 
 namespace App\Models;
 
+use App\DataMapper\QuoteBackup;
 use App\DataMapper\QuoteSync;
 use App\Utils\Ninja;
 use App\Utils\Number;
@@ -58,7 +59,7 @@ use App\Models\Traits\IndexableItems;
  * @property string|null $next_send_date
  * @property bool $is_deleted
  * @property object|array|string $line_items
- * @property object|null $backup
+ * @property QuoteBackup|null $backup
  * @property QuoteSync|null $sync
  * @property string|null $footer
  * @property string|null $public_notes
@@ -140,15 +141,6 @@ class Quote extends BaseModel
     use Searchable;
     use HasTags;
     Use IndexableItems;
-    /**
-     * Get the index name for the model.
-     *
-     * @return string
-     */
-    public function searchableAs(): string
-    {
-        return 'quotes';
-    }
 
     protected $presenter = QuotePresenter::class;
 
@@ -199,7 +191,7 @@ class Quote extends BaseModel
         'due_date' => 'date:Y-m-d',
         'partial_due_date' => 'date:Y-m-d',
         'line_items' => 'object',
-        'backup' => 'object',
+        'backup' => QuoteBackup::class,
         'updated_at' => 'timestamp',
         'created_at' => 'timestamp',
         'deleted_at' => 'timestamp',
@@ -220,7 +212,19 @@ class Quote extends BaseModel
 
     public const STATUS_REJECTED = 5;
 
+    public const STATUS_CANCELLED = 6;
+
     public const STATUS_EXPIRED = -1;
+
+    /**
+     * Get the index name for the model.
+     *
+     * @return string
+     */
+    public function searchableAs(): string
+    {
+        return 'quotes';
+    }
 
     public function toSearchableArray(): array
     {
@@ -230,7 +234,7 @@ class Quote extends BaseModel
 
         return [
             'id' => $this->company->db . ":" . $this->id,
-            'name' => ctrans('texts.quote') . " " . ($this->number ?? '') . " | " . $this->client->present()->name() . ' | ' . Number::formatMoney($this->amount, $this->company) . ' | ' . $this->translateDate($this->date, $this->company->date_format(), $locale),
+            'name' => ctrans('texts.quote') . " " . ($this->number ?? '') . " | " . $this->client->present()->name() . ' | ' . Number::formatMoney($this->amount, $this->client) . ' | ' . $this->translateDate($this->date, $this->company->date_format(), $locale),
             'hashed_id' => $this->hashed_id,
             'user_id' => (string) $this->user_id,
             'assigned_user_id' => (string) $this->assigned_user_id,
@@ -268,11 +272,33 @@ class Quote extends BaseModel
 
     public function getStatusIdAttribute($value)
     {
-        if ($this->due_date && ! $this->is_deleted && $value == self::STATUS_SENT && Carbon::parse($this->due_date)->lte(now()->startOfDay())) {
+        if (! $this->is_deleted && $value == self::STATUS_SENT && $this->hasLapsedValidUntil()) {
             return self::STATUS_EXPIRED;
         }
 
         return $value;
+    }
+
+    /**
+     * Valid-until is inclusive of the due date. The quote expires the following day.
+     */
+    public function hasLapsedValidUntil(mixed $due_date = null): bool
+    {
+        $due = $due_date ?? $this->due_date;
+
+        if (! $due) {
+            return false;
+        }
+
+        $quote_valid_date = Carbon::parse($due)->toDateString();
+
+        $client_date_now = now()
+            ->setTimezone($this->client->timezone()->name)
+            ->toDateString();
+    
+        /** lexigraphical comparison is used to compare the dates as strings */
+        return $quote_valid_date < $client_date_now;
+
     }
 
     public function company(): \Illuminate\Database\Eloquent\Relations\BelongsTo
@@ -401,6 +427,8 @@ class Quote extends BaseModel
                 return '<h5><span class="badge badge-light">' . ctrans('texts.converted') . '</span></h5>';
             case self::STATUS_REJECTED:
                 return '<h5><span class="badge badge-danger">' . ctrans('texts.rejected') . '</span></h5>';
+            case self::STATUS_CANCELLED:
+                return '<h5><span class="badge badge-secondary">' . ctrans('texts.cancelled') . '</span></h5>';
             default:
                 return '<h5><span class="badge badge-light">' . ctrans('texts.draft') . '</span></h5>';
         }
@@ -421,6 +449,8 @@ class Quote extends BaseModel
                 return ctrans('texts.converted');
             case self::STATUS_REJECTED:
                 return ctrans('texts.rejected');
+            case self::STATUS_CANCELLED:
+                return ctrans('texts.cancelled');
             default:
                 return ctrans('texts.draft');
 
@@ -448,6 +478,11 @@ class Quote extends BaseModel
         }
 
         return false;
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status_id === $this::STATUS_CANCELLED;
     }
 
     public function getValidUntilAttribute()
@@ -517,7 +552,7 @@ class Quote extends BaseModel
      */
     public function canRemind(): bool
     {
-        if (in_array($this->status_id, [self::STATUS_DRAFT, self::STATUS_APPROVED, self::STATUS_CONVERTED]) || $this->is_deleted) {
+        if (in_array($this->status_id, [self::STATUS_DRAFT, self::STATUS_APPROVED, self::STATUS_CONVERTED, self::STATUS_CANCELLED]) || $this->is_deleted) {
             return false;
         }
 
@@ -554,5 +589,34 @@ class Quote extends BaseModel
     }
 
 
+    /**
+     * hasOptions
+     *
+     * checks the line items to determine whether there are any optional items in the quote.
+     * @return bool
+     */
+    public function hasOptions(): bool
+    {
+        foreach ($this->line_items ?? [] as $item) {
+            if (data_get($item, 'is_optional', false)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasOptionSelection(): bool
+    {
+        return ! empty($this->backup?->option_selection['confirmed_at']);
+    }
+
+    public function hasPendingOptionSelection(): bool
+    {
+        return $this->hasOptionSelection()
+            && in_array($this->status_id, [self::STATUS_DRAFT, self::STATUS_SENT])
+            && ($this->backup->option_selection['state'] ?? QuoteBackup::STATE_PENDING_ACCEPTANCE)
+                === QuoteBackup::STATE_PENDING_ACCEPTANCE;
+    }
 
 }
