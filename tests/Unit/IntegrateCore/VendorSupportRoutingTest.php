@@ -3,8 +3,8 @@
 namespace Tests\Unit\IntegrateCore;
 
 use App\Http\Controllers\Support\Messages\SendingController;
+use App\Http\Requests\Support\Messages\SendMessageRequest;
 use App\Mail\SupportMessageSent;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -15,7 +15,7 @@ class VendorSupportRoutingTest extends TestCase
         Mail::fake();
         config(['mail.from.address' => 'company-support@example.com']);
 
-        $response = (new SendingController())(Request::create(
+        $response = (new SendingController())(SendMessageRequest::create(
             '/api/v1/support/messages/send',
             'POST',
             ['message' => 'Synthetic support message', 'send_logs' => false]
