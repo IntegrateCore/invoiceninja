@@ -1,0 +1,111 @@
+name: IntegrateCore isolated image candidate
+on:
+  push:
+    branches: [ci/integratecore-candidate-20261126]
+permissions:
+  contents: read
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: }
+      config: }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 7f4db47c4a1ad67370f23213aa66885b84197744
+          persist-credentials: false
+          sparse-checkout: .github/validation/combined-image.sh
+          sparse-checkout-cone-mode: false
+          path: validation-wrapper
+      - uses: actions/checkout@v4
+        with:
+          ref: 173ff5a8362e49956b1bdb59197b286aa449e1c8
+          persist-credentials: false
+          path: backend
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: bcmath, gd, imagick, intl, mbstring, pdo_mysql, soap, zip
+          tools: composer:v2
+          coverage: none
+      - name: Build and validate the pinned backend and UI
+        id: validate
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 173ff5a8362e49956b1bdb59197b286aa449e1c8
+          test "$(git rev-parse 'HEAD^{tree}')" = 871d6347446bd2ba547acc6bc0c54a9a36575d7c
+          grep -Fx 'ui=98090aa2595fddca5d1e8433c4436d1292245ec7' ../validation-wrapper/.github/validation/combined-image.sh
+          bash ../validation-wrapper/.github/validation/combined-image.sh
+          echo "config=$(docker image inspect --format '{{.Id}}' invoiceninja:combined-validation)" >> "$GITHUB_OUTPUT"
+      - name: Publish the validated image and verify its registry manifest
+        id: publish
+        env:
+          GHCR_TOKEN: }
+          VALIDATED_CONFIG: }
+        run: |
+          set -euo pipefail
+          package=ghcr.io/integratecore/invoiceninja
+          tag="$package:candidate-173ff5a-98090aa--"
+          test "$(docker image inspect --format '{{.Id}}' invoiceninja:combined-validation)" = "$VALIDATED_CONFIG"
+          export DOCKER_CONFIG="$(mktemp -d)"
+          trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          unset GHCR_TOKEN
+          docker tag "$VALIDATED_CONFIG" "$tag"
+          docker push "$tag" | tee "$RUNNER_TEMP/candidate-push.log"
+          digest="$(sed -nE 's/.*digest: (sha256:[a-f0-9]{64}).*/\1/p' "$RUNNER_TEMP/candidate-push.log")"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          docker manifest inspect "$tag" > "$RUNNER_TEMP/candidate-manifest.json"
+          docker manifest inspect "$package@$digest" > "$RUNNER_TEMP/candidate-by-digest.json"
+          cmp "$RUNNER_TEMP/candidate-manifest.json" "$RUNNER_TEMP/candidate-by-digest.json"
+          test "$(jq -er '.config.digest' "$RUNNER_TEMP/candidate-manifest.json")" = "$VALIDATED_CONFIG"
+          {
+            echo "Candidate tag: $tag"
+            echo "Immutable image: $package@$digest"
+            echo "Verified config: $VALIDATED_CONFIG"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          cp "$RUNNER_TEMP/candidate-push.log" "$RUNNER_TEMP/candidate-manifest.json" .
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "config=$VALIDATED_CONFIG" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-registry-evidence
+          path: |
+            candidate-push.log
+            candidate-manifest.json
+          if-no-files-found: error
+  disposable-dev-smoke:
+    needs: candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      packages: read
+    steps:
+      - name: Pull the candidate by digest on a fresh runner
+        env:
+          GHCR_TOKEN: }
+          DIGEST: }
+          EXPECTED_CONFIG: }
+        run: |
+          set -euo pipefail
+          [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          image="ghcr.io/integratecore/invoiceninja@$DIGEST"
+          export DOCKER_CONFIG="$(mktemp -d)"
+          trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          unset GHCR_TOKEN
+          docker pull "$image"
+          test "$(docker image inspect --format '{{.Id}}' "$image")" = "$EXPECTED_CONFIG"
+          docker run --rm --network none --entrypoint php "$image" -r 'if (PHP_VERSION_ID !== 80427) exit(1); echo PHP_VERSION, PHP_EOL;'
+          docker run --rm --network none --entrypoint php-fpm "$image" -t
+          docker run --rm --network none --entrypoint sh "$image" -ec 'grep -Fx 5.14.0 VERSION.txt; test -s public/index.html'
+          echo "Verified $image on a fresh runner; config $EXPECTED_CONFIG" >> "$GITHUB_STEP_SUMMARY"
