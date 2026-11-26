@@ -18,7 +18,40 @@ jobs:
           persist-credentials: false
           sparse-checkout: .github/validation/exact-image-smoke.sh
           sparse-checkout-cone-mode: false
+      - name: Verify exact private package metadata
+        id: package_metadata
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          body=$(mktemp "$RUNNER_TEMP/package-metadata.XXXXXXXX")
+          trap 'rm -f -- "$body"' EXIT
+          status=$(
+            printf 'header = "Authorization: Bearer %s"\n' "$GHCR_TOKEN" |
+              curl -q -s --max-time 20 --config - \
+                --header 'Accept: application/vnd.github+json' \
+                --output "$body" --write-out '%{http_code}' \
+                https://api.github.com/orgs/IntegrateCore/packages/container/invoiceninja
+          ) || transport_failed=1
+          unset GHCR_TOKEN
+          if [[ ! "$status" =~ ^[0-9]{3}$ ]]; then status=000; fi
+          printf 'Package metadata HTTP status: %s\n' "$status"
+          if [[ -z "${transport_failed:-}" && "$status" == 200 ]] &&
+            jq -se '
+              length == 1 and (.[0] |
+                .name == "invoiceninja" and .package_type == "container" and
+                (.owner.login | ascii_downcase) == "integratecore" and
+                .visibility == "private")
+            ' "$body" >/dev/null 2>&1; then
+            echo 'Package metadata: exact identity and private visibility verified'
+          else
+            echo 'Package metadata: exact private package not verified'
+            exit 1
+          fi
       - name: Verify identity, normal startup, HTTP and migrations
+        if: success() || (failure() && steps.package_metadata.outcome == 'failure')
         shell: bash
         env:
           GHCR_TOKEN: ${{ github.token }}
