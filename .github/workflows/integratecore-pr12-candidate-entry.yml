@@ -1,0 +1,17 @@
+name: IntegrateCore PR 12 isolated candidate
+on:
+  push:
+    branches: [ci/integratecore-pr12-candidate-20261126]
+    paths: [.github/workflows/integratecore-pr12-candidate-entry.yml]
+permissions: {}
+jobs:
+  candidate:
+    if: github.repository == 'IntegrateCore/invoiceninja' && github.ref == 'refs/heads/ci/integratecore-pr12-candidate-20261126'
+    permissions:
+      contents: read
+      packages: write
+    uses: IntegrateCore/invoiceninja/.github/workflows/integratecore-candidate.yml@fea74a1b69c1985ddbf7604e4c4ec57d5c7a0649
+    with:
+      release_sha: fea74a1b69c1985ddbf7604e4c4ec57d5c7a0649
+      backend_sha: 173ff5a8362e49956b1bdb59197b286aa449e1c8
+      ui_sha: 98090aa2595fddca5d1e8433c4436d1292245ec7
