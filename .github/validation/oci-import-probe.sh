@@ -87,13 +87,22 @@ python3 "$work/oci-import-fixture.py" create "$work"
 repo=$(jq -er .repo "$work/expected.json")
 digest=$(jq -er .manifest "$work/expected.json")
 config=$(jq -er .config "$work/expected.json")
-moved_config=$(jq -er .moved_config "$work/expected.json")
+moved_digest=$(jq -er .moved_manifest "$work/expected.json")
 ref="$repo@$digest"
+manifest_hash=$(cut -d: -f2 <<< "$digest")
+config_hash=$(cut -d: -f2 <<< "$config")
+content() {
+    timeout -k 2s 12s sudo "$bin/ctr" --address "$work/containerd.sock" --namespace moby content get "$1"
+}
 identity() {
     [[ $1 == "$ref" ]] || return 1
-    d image inspect "$1" 2>/dev/null | jq -e --arg ref "$ref" --arg config "$config" '
-        length==1 and .[0].Id==$config and .[0].Os=="linux" and .[0].Architecture=="amd64"
-        and (.[0].RepoDigests | index($ref)!=null)' >/dev/null
+    d image inspect "$1" 2>/dev/null | jq -e --arg ref "$ref" --arg digest "$digest" '
+        length==1 and .[0].Id==$digest and .[0].Descriptor.digest==$digest
+        and .[0].Os=="linux" and .[0].Architecture=="amd64"
+        and (.[0].RepoDigests | index($ref)!=null)' >/dev/null || return 1
+    content "$digest" | cmp - "$work/layout/blobs/sha256/$manifest_hash" || return 1
+    content "$config" | cmp - "$work/layout/blobs/sha256/$config_hash" || return 1
+    content "$digest" | jq -e --arg config "$config" '.config.digest==$config' >/dev/null
 }
 stage=offline-load
 offline=false
@@ -146,7 +155,7 @@ if [[ $offline == false ]]; then
 else
     d image load -i "$work/oci-moved.tar" >/dev/null
 fi
-test "$(d image inspect "$repo:candidate" --format '{{.Id}}')" = "$moved_config"
+test "$(d image inspect "$repo:candidate" --format '{{.Id}}')" = "$moved_digest"
 echo 'Moved tag resolves to a different config, not the approved digest'
 if identity "$repo:candidate" || identity "$repo:movable"; then
     echo 'Unexpectedly accepted a movable reference'
@@ -162,9 +171,9 @@ if d image inspect "$repo@$bad" >/dev/null 2>&1 || d run --rm --network none --p
 fi
 identity "$ref"
 cid=$(d create --network none --pull never "$ref")
-d container inspect "$cid" | jq -e --arg config "$config" --arg ref "$ref" '
-    length==1 and .[0].Image==$config and .[0].Config.Image==$ref' >/dev/null
+d container inspect "$cid" | jq -e --arg digest "$digest" --arg ref "$ref" '
+    length==1 and .[0].Image==$digest and .[0].Config.Image==$ref' >/dev/null
 d start -a "$cid" >/dev/null
 test "$(d container inspect "$cid" --format '{{.State.ExitCode}}')" = 0
 d rm "$cid" >/dev/null
-echo 'Exact repo@digest created and ran with --pull never; runtime image and config identities matched; wrong digest rejected'
+echo 'Exact repo@digest ran with --pull never; containerd manifest and config bytes matched; wrong digest rejected'

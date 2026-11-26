@@ -12,7 +12,7 @@ jobs:
     timeout-minutes: 10
     permissions: {}
     steps:
-      - name: Run the isolated probe with exact staging packages and bounded diagnostics
+      - name: Run the isolated probe with exact staging packages and independent manifest/config evidence
         shell: bash
         run: |
           set -euo pipefail
