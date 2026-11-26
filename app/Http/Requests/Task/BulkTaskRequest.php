@@ -58,22 +58,18 @@ class BulkTaskRequest extends Request
         }
 
         $validator->after(function ($validator) {
+            if ($this->action !== 'bulk_update') {
+                return;
+            }
 
-            if ($this->action == 'bulk_update') {
-                
-                $user = auth()->user();
+            $user = auth()->user();
+            $unauthorizedTask = Task::withTrashed()
+                ->whereIn('id', $this->transformKeys($this->ids))
+                ->lazyById(50)
+                ->first(fn (Task $task) => $user->cannot('edit', $task));
 
-                $permissions = Task::withTrashed()
-                                ->whereIn('id', $this->transformKeys($this->ids))
-                                ->get()
-                                ->first(function ($task) use ($user) {
-                                    return $user->cannot('edit', $task);
-                                });       
-
-                if ($permissions->isEmpty()) {
-                    $validator->errors()->add('ids', 'You are not authorized to update these tasks.');
-                }
-            
+            if ($unauthorizedTask !== null) {
+                $validator->errors()->add('ids', 'You are not authorized to update these tasks.');
             }
         });
 

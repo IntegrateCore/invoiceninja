@@ -1436,6 +1436,36 @@ class TaskApiTest extends TestCase
         $this->assertEquals(0, $arr['data']['archived_at']);
     }
 
+    public function testBulkClientReassignmentMovesLegacyConsultingHoursViaApi(): void
+    {
+        $this->client->forceFill(['consulting_hours_balance' => 4])->saveQuietly();
+        $destination = \App\Models\Client::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'consulting_hours_balance' => 3,
+        ]);
+        $this->task->forceFill([
+            'client_id' => $this->client->id,
+            'time_log' => '[[1000,4600]]',
+            'consulting_hours_consumed' => 1,
+            'consulting_hours_client_id' => null,
+            'invoice_id' => null,
+        ])->saveQuietly();
+
+        $this->withHeaders([
+            'X-API-SECRET' => config('ninja.api_secret'),
+            'X-API-TOKEN' => $this->token,
+        ])->postJson('/api/v1/tasks/bulk?action=bulk_update', [
+            'ids' => [$this->task->hashed_id],
+            'column' => 'client_id',
+            'new_value' => $destination->hashed_id,
+        ])->assertOk()->assertJsonPath('data.0.client_id', $destination->hashed_id);
+
+        $this->assertEquals(5, $this->client->fresh()->consulting_hours_balance);
+        $this->assertEquals(2, $destination->fresh()->consulting_hours_balance);
+        $this->assertEquals($destination->id, $this->task->fresh()->consulting_hours_client_id);
+    }
+
     public function testTaskArchived()
     {
         $data = [

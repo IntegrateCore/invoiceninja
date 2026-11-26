@@ -29,7 +29,7 @@ class ConsultingHours
     public function syncTask(Task $task, ?int $previousClientId = null): void
     {
         $task->getConnection()->transaction(function () use ($task, $previousClientId) {
-            $current = $task->newQuery()->where('company_id', $task->company_id)
+            $current = $task->newQuery()->withTrashed()->where('company_id', $task->company_id)
                 ->lockForUpdate()->find($task->id);
 
             if (!$current || $current->is_deleted) {
@@ -74,7 +74,7 @@ class ConsultingHours
             }
 
             if ($previous !== $desired || $current->consulting_hours_client_id != $desiredId) {
-                $current->newQuery()->whereKey($current->id)->toBase()->update([
+                $current->newQuery()->withTrashed()->whereKey($current->id)->toBase()->update([
                     'consulting_hours_consumed' => $desired,
                     'consulting_hours_client_id' => $desiredId,
                 ]);

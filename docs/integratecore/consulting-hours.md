@@ -18,3 +18,8 @@ otherwise to the client on the existing task, when first reconciled.
 No automatic historical backfill is scheduled. If existing untouched open
 tasks must be reconciled immediately, review the affected client balances first
 and run a separate bounded reconciliation rather than scanning in a migration.
+
+Moving a selected task to another client (directly or by choosing a project)
+moves the recorded charge to that client. Bulk edits process selected tasks in
+small batches and do not process unrelated or invoiced tasks. Stopping timers
+from the task list records the same saved time as stopping a single task.
