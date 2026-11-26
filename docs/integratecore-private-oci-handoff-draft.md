@@ -65,6 +65,52 @@ If the owner cannot demonstrate exact claim enforcement and port isolation
 on this tailnet, **stop**; do not fall back to a reusable auth key or a
 broader grant.
 
+## Receiver slice: disabled, no listener
+
+The local receiver core accepts one image-only OCI archive at PUT /v1/image
+into a private single-use slot. An operator supplies the expected archive
+checksum independently; it is not a substitute for the pinned manifest,
+handoff and blob checks. Successful upload returns status only, never
+readback, import or deployment. The slot is finalized without overwrite;
+disconnect or timeout removes the partial file. A crash can leave a stale
+partial, which blocks the slot until the owner inspects and clears it.
+
+A future adapter must run as a dedicated non-root tsnet application with a
+neutral hostname (for example, private-inbox), private state and only quota-
+limited inbox write access. Bind the application through tsnet.Server.Listen
+on one granted port, not a host TCP socket. Prefer WireGuard-only transport
+to avoid public certificate naming; if HTTPS is required, wrap that same
+listener with a private CA and pin it at the sender. Never use ListenFunnel,
+public DNS/certs for the private name, subnet forwarding, or host SSH.
+
+For each accepted connection, the adapter must call Server.LocalClient()
+and WhoIs with the socket's actual RemoteAddr. Deny errors, absent node,
+missing exact CapMap key https://integratecore.net/cap/oci-image-upload,
+or anything other than the single dedicated sender tag. Never read forwarded
+headers as identity. The owner must separately grant that sender only the
+dedicated receiver port and capability. Restrict header size/time and
+connection count before the core; reject transfer encodings and conflicting
+lengths, and authorize before reading or sending 100 Continue. Enforce
+read deadlines and a filesystem quota externally as well; synchronous disk
+operations cannot be interrupted by the asyncio body timeout.
+
+The core contains no network adapter. Upstream tsnet Listen, LocalClient and
+WhoIs/CapMap interfaces were checked in source, but no maintained dependency
+was pinned or compiled against, and no actual peer, policy or registration
+was tested. Do not enable a listener on this evidence alone.
+
+GitHub workflow_dispatch requires registration on the default branch; an
+isolated ref alone does not register it. No active workflow or default-branch
+change is included. An eventual owner-approved trigger must still enforce
+the exact repository, event, ref and immutable reviewed workflow revision.
+
+Run the synthetic entry-point acceptance with:
+`python3 scripts/integratecore-release/test-oci-inbox.py`.
+
+References: [tsnet source](https://github.com/tailscale/tailscale/blob/main/tsnet/tsnet.go),
+[WhoIs response](https://github.com/tailscale/tailscale/blob/main/client/tailscale/apitype/apitype.go),
+[GitHub dispatch registration](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch).
+
 ## Local acceptance and import boundary
 
 Run on Linux with Python 3.11+:
