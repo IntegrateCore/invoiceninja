@@ -12,7 +12,7 @@ jobs:
     timeout-minutes: 10
     permissions: {}
     steps:
-      - name: Run the isolated probe with exact staging packages
+      - name: Run the isolated probe with exact staging packages and bounded diagnostics
         shell: bash
         run: |
           set -euo pipefail
@@ -23,4 +23,4 @@ jobs:
           for script in oci-import-fixture.py oci-import-probe.sh; do
             curl -q -fsS --max-time 20 "$url/$script" -o "$probe/$script"
           done
-          bash "$probe/oci-import-probe.sh" "$probe"
+          timeout -k 12s 150s bash "$probe/oci-import-probe.sh" "$probe"
