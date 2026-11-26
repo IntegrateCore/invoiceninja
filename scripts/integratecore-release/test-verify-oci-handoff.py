@@ -5,9 +5,12 @@ import runpy
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 validator = runpy.run_path(str(Path(__file__).with_name("verify-oci-handoff.py")))
 verify = validator["verify"]
+accept_local = validator["accept_local"]
+check_runtime_evidence = validator["check_runtime_evidence"]
 InvalidHandoff = validator["InvalidHandoff"]
 BACKEND, UI, PHP_BASE = "a" * 40, "b" * 40, "sha256:" + "c" * 64
 REPO = validator["REPOSITORY"]
@@ -122,6 +125,68 @@ class HandoffTests(unittest.TestCase):
         self.blob_path(self.layer).write_bytes(b"x")
         with self.assertRaisesRegex(InvalidHandoff, "blob size mismatch"):
             self.check()
+
+    def create_inbox(self, mode=0o700):
+        inbox = self.handoff.parent / "inbox"
+        inbox.mkdir()
+        inbox.chmod(mode)
+        return inbox
+
+    def accept(self, inbox, limit):
+        return accept_local(self.layout, inbox, self.handoff, self.image, BACKEND, UI, PHP_BASE, limit)
+
+    def runtime_payload(self, **changes):
+        item = {"Id": self.config["digest"], "RepoDigests": [self.image],
+                "Os": "linux", "Architecture": "amd64"}
+        return json.dumps([dict(item, **changes)])
+
+    def test_local_handoff_to_runtime_evidence(self):
+        example_path = (Path(__file__).resolve().parents[2] /
+                        "docs/examples/integratecore-oci-handoff.disabled.json")
+        config = json.loads(example_path.read_text(encoding="utf-8"))
+        self.assertIs(config["enabled"], False)
+        self.assertIsNone(config["inbox_example"]["listen"])
+        self.assertIs(config["inbox_example"]["auto_import"], False)
+        inbox = self.create_inbox()
+        verified = self.accept(inbox, config["inbox_example"]["max_blob_bytes"])
+        self.assertEqual({p.name for p in inbox.iterdir()}, {"sealed"})
+        self.assertFalse((inbox / "sealed" / self.handoff.name).exists())
+        self.assertEqual(verify(inbox / "sealed", self.handoff, self.image,
+                                BACKEND, UI, PHP_BASE), verified)
+        check_runtime_evidence(self.runtime_payload(), self.image, verified)
+        with self.assertRaisesRegex(InvalidHandoff, "unexpected layout entry"):
+            self.accept(inbox, config["inbox_example"]["max_blob_bytes"])
+
+    def test_small_inbox_rejects_without_sealing(self):
+        inbox = self.create_inbox()
+        with self.assertRaisesRegex(InvalidHandoff, "byte limit"):
+            self.accept(inbox, 10)
+        self.assertEqual(list(inbox.iterdir()), [])
+
+    def test_open_inbox_rejected(self):
+        with self.assertRaisesRegex(InvalidHandoff, "mode 0700"):
+            self.accept(self.create_inbox(mode=0o755), 4096)
+
+    def test_corruption_after_sender_check_leaves_inbox_empty(self):
+        def verify_then_corrupt(layout, *args, **kwargs):
+            result = verify(layout, *args, **kwargs)
+            if layout == self.layout:
+                self.blob_path(self.layer).write_bytes(b"x" * self.layer["size"])
+            return result
+
+        inbox = self.create_inbox()
+        with patch.dict(accept_local.__globals__, verify=verify_then_corrupt):
+            with self.assertRaisesRegex(InvalidHandoff, "blob digest mismatch"):
+                self.accept(inbox, 4096)
+        self.assertEqual(list(inbox.iterdir()), [])
+
+    def test_runtime_rejects_tag_only_or_wrong_config(self):
+        for changes in ({"RepoDigests": []},
+                        {"RepoDigests": [REPO + ":candidate"]},
+                        {"Id": "sha256:" + "d" * 64}):
+            with self.subTest(changes=changes):
+                with self.assertRaisesRegex(InvalidHandoff, "does not resolve"):
+                    check_runtime_evidence(self.runtime_payload(**changes), self.image, self.config["digest"])
 
 
 if __name__ == "__main__":

@@ -2,12 +2,15 @@
 """Validate a sealed, unpacked image-only OCI layout. Never import or deploy it."""
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
+from pathlib import Path
 import re
 import stat
 import sys
+import tempfile
 from contextlib import contextmanager
 
 REPOSITORY = "ghcr.io/integratecore/invoiceninja"
@@ -115,7 +118,14 @@ def blob(directory, entry, parse_json=False):
             require(len(payload) == size, "blob changed during verification")
             checksum = hashlib.sha256(payload)
         else:
-            checksum = hashlib.file_digest(stream, "sha256")
+            checksum = hashlib.sha256()
+            left = size
+            while left:
+                chunk = stream.read(min(left, 256 * 1024))
+                require(chunk, "blob truncated during verification")
+                checksum.update(chunk)
+                left -= len(chunk)
+            require(not stream.read(1), "blob grew during verification")
         require(checksum.hexdigest() == name, "blob digest mismatch")
     return json_object(payload) if parse_json else None
 
@@ -169,6 +179,69 @@ def verify(layout, handoff, image, backend, ui, php_base, byte_limit=DEFAULT_BYT
         for entry in layer_entries:
             blob(sha, entry)
         return "sha256:" + config_entry[0]
+
+
+def accept_local(source, inbox, handoff, image, backend, ui, php_base, byte_limit):
+    """Exercise the sender and inbox boundaries over local files, not a transport."""
+    require(type(byte_limit) is int and 0 < byte_limit <= DEFAULT_BYTE_LIMIT, "invalid inbox byte limit")
+    pins = (handoff, image, backend, ui, php_base)
+    sender_config = verify(source, *pins, byte_limit=byte_limit)
+    inbox = Path(inbox)
+    with opened_dir(inbox) as inbox_fd:
+        info = os.fstat(inbox_fd)
+        require(info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o700,
+                "inbox must be owned by this process and mode 0700")
+        fcntl.flock(inbox_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        require_entries(inbox_fd, set())
+        with tempfile.TemporaryDirectory(prefix=".incoming-", dir=inbox) as scratch:
+            layout = Path(scratch) / "layout"
+            target = layout / "blobs" / "sha256"
+            target.mkdir(parents=True)
+            remaining = byte_limit + 2 * METADATA_LIMIT
+
+            def copy_file(directory, name, destination, limit):
+                nonlocal remaining
+                with opened_file(name, directory) as (source_file, size):
+                    require(0 < size <= min(limit, remaining), "inbox byte limit exceeded")
+                    with destination.open("xb") as output:
+                        left = size
+                        while left:
+                            chunk = source_file.read(min(left, 256 * 1024))
+                            require(chunk, "source truncated during handoff")
+                            output.write(chunk)
+                            left -= len(chunk)
+                        require(not source_file.read(1), "source grew during handoff")
+                    remaining -= size
+                    destination.chmod(0o400)
+
+            with opened_dir(source) as root, opened_dir("blobs", root) as blobs, opened_dir("sha256", blobs) as sha:
+                for name in ("oci-layout", "index.json"):
+                    copy_file(root, name, layout / name, METADATA_LIMIT)
+                with os.scandir(sha) as entries:
+                    for count, entry in enumerate(entries, 1):
+                        require(count <= LAYER_LIMIT + 2 and DIGEST.fullmatch("sha256:" + entry.name),
+                                "unexpected sender blob")
+                        copy_file(sha, entry.name, target / entry.name, byte_limit)
+
+            recipient_config = verify(layout, *pins, byte_limit=byte_limit)
+            require(recipient_config == sender_config, "sender and inbox config mismatch")
+            layout.rename(inbox / "sealed")
+    return recipient_config
+
+
+def check_runtime_evidence(inspect_payload, image, config):
+    """Check operator-collected inspect output; never load, tag or run an image."""
+    require(image.startswith(REPOSITORY + "@") and DIGEST.fullmatch(image.split("@", 1)[1]),
+            "runtime evidence needs an approved digest reference")
+    require(DIGEST.fullmatch(config), "runtime evidence needs a verified config digest")
+    items = json.loads(inspect_payload, object_pairs_hook=unique_object)
+    require(isinstance(items, list) and len(items) == 1 and isinstance(items[0], dict),
+            "expected exactly one locally inspected image")
+    item = items[0]
+    digests = item.get("RepoDigests")
+    require(isinstance(digests, list) and image in digests and item.get("Id") == config
+            and item.get("Os") == "linux" and item.get("Architecture") == "amd64",
+            "runtime does not resolve the approved repository digest to the verified config")
 
 
 def main():
