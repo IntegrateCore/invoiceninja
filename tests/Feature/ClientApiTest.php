@@ -572,6 +572,36 @@ class ClientApiTest extends TestCase
         $this->assertSame(3.125, (float) $this->client->fresh()->consulting_hours_balance);
     }
 
+    public function testTaskConsultingHoursSnapshotDoesNotRunClientFileSync(): void
+    {
+        config(['integratecore.enabled' => true]);
+        $this->mock(\App\Services\IntegrateCore\ClientFiles::class)
+            ->shouldNotReceive('sync');
+
+        $client = $this->client;
+        $client->consulting_hours_balance = 1.125;
+        $client->consulting_hours_funded = true;
+        $client->saveQuietly();
+
+        $uri = "/api/v1/clients/{$client->hashed_id}/consulting_hours";
+        $this->withHeaders(['X-API-TOKEN' => $this->token])
+            ->getJson($uri)
+            ->assertOk()
+            ->assertExactJson(['data' => [
+                'consulting_hours_balance' => 1.125,
+                'consulting_hours_funded' => true,
+                'consulting_hours_warn_at' => ConsultingHours::THRESHOLD,
+            ]]);
+
+        $client->consulting_hours_balance = 0;
+        $client->consulting_hours_funded = false;
+        $client->saveQuietly();
+
+        $this->getJson($uri)
+            ->assertOk()
+            ->assertJsonPath('data.consulting_hours_funded', false);
+    }
+
     public function testCurrencyCodePassesValidation()
     {
         $data = [
