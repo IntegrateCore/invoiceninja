@@ -218,6 +218,7 @@ Route::group(['middleware' => ['throttle:api', 'token_auth', 'valid_json','local
     Route::post('clients/{client}/file-library/refresh', [\App\Http\Controllers\IntegrateCore\ClientFilesController::class, 'refresh']);
 
     Route::post('clients/{client}/documents', [ClientController::class, 'documents'])->name('clients.documents');
+    Route::get('clients/{client}/consulting_hours', [ClientController::class, 'consultingHours'])->name('clients.consulting_hours');
     Route::post('clients/{client}/show_settings', [ClientController::class, 'showSettings'])->name('clients.show_settings');
 
     Route::post('reactivate_email/{bounce_id}', [ClientController::class, 'reactivateEmail'])->name('clients.reactivate_email');

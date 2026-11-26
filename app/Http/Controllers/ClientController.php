@@ -45,6 +45,7 @@ use App\Models\RecurringInvoice;
 use App\Models\SystemLog;
 use App\Models\Task;
 use App\Repositories\ClientRepository;
+use App\Services\IntegrateCore\ConsultingHours;
 use App\Services\Template\TemplateAction;
 use App\Transformers\ClientTransformer;
 use App\Transformers\DocumentTransformer;
@@ -53,6 +54,7 @@ use App\Utils\Traits\BulkOptions;
 use App\Utils\Traits\MakesHash;
 use App\Utils\Traits\SavesDocuments;
 use App\Utils\Traits\Uploadable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
 use Postmark\PostmarkClient;
@@ -513,6 +515,18 @@ class ClientController extends BaseController
 
         return $this->listResponse($documents);
 
+    }
+
+    public function consultingHours(ShowClientRequest $request, Client $client): JsonResponse
+    {
+        abort_if(auth()->user()->hasExcludedPermissions($this->client_excludable_permissions, $this->client_excludable_overrides), 403);
+
+        return response()->json(['data' => [
+            'consulting_hours_balance' => (float) $client->consulting_hours_balance,
+            'consulting_hours_funded' => !$client->is_deleted && !$client->deleted_at
+                && ((bool) $client->consulting_hours_funded || (float) $client->consulting_hours_balance > 0),
+            'consulting_hours_warn_at' => ConsultingHours::THRESHOLD,
+        ]])->header('Cache-Control', 'private, no-store');
     }
 
     public function showSettings(ShowClientRequest $request, Client $client)
