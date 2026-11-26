@@ -82,20 +82,20 @@ class CompanyGatewayTransformer extends EntityTransformer
             'token_billing' => (string) $company_gateway->token_billing,
             'test_mode' => (bool) $company_gateway->isTestMode(),
             'always_show_required_fields' => (bool) $company_gateway->always_show_required_fields,
-            'settings' => $company_gateway->settings ?: new stdClass(),
+            'settings' => $company_gateway->settings ?: new stdClass(), //@phpstan-ignore-line
         ];
     }
 
     public function includeGateway(CompanyGateway $company_gateway)
     {
-        $transformer = new GatewayTransformer($this->serializer);
+        $transformer = new GatewayTransformer($this->serializer, $this->user);
 
         return $this->includeItem($company_gateway->gateway, $transformer, Gateway::class);
     }
 
     public function includeSystemLogs(CompanyGateway $company_gateway)
     {
-        $transformer = new SystemLogTransformer($this->serializer);
+        $transformer = new SystemLogTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($company_gateway->system_logs(), $transformer, SystemLog::class);
     }

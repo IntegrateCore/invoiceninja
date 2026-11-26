@@ -95,6 +95,11 @@ class DocumentController extends Controller
             abort_unless(auth()->user() && auth()->user()->company()->id === $document->company_id && auth()->user()->can('view', $document), 403);
         }
 
+        /** @var \App\Models\User $user **/
+        $user = auth()->user();
+        
+        abort_unless($user->can('view', $document), 403);
+
         $headers = ['Cache-Control:' => 'no-cache'];
 
         if (request()->input('inline') == 'true') {

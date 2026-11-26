@@ -275,7 +275,7 @@ class Invoice extends BaseModel
 
         return [
             'id' => (string) $this->company->db . ":" . $this->id,
-            'name' => ctrans('texts.invoice') . " " . $this->number . " | " . $this->client->present()->name() . ' | ' . Number::formatMoney($this->amount, $this->company) . ' | ' . $this->translateDate($this->date, $this->company->date_format(), $locale),
+            'name' => ctrans('texts.invoice') . " " . $this->number . " | " . $this->client->present()->name() . ' | ' . Number::formatMoney($this->amount, $this->client) . ' | ' . $this->translateDate($this->date, $this->company->date_format(), $locale),
             'hashed_id' => $this->hashed_id,
             'user_id' => (string) $this->user_id,
             'assigned_user_id' => (string) $this->assigned_user_id,
@@ -410,7 +410,7 @@ class Invoice extends BaseModel
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Relations\MorphToMany
+     * @return \Illuminate\Database\Eloquent\Relations\MorphToMany<\App\Models\Payment, $this>
      */
     public function net_payments(): \Illuminate\Database\Eloquent\Relations\MorphToMany
     {
@@ -524,11 +524,11 @@ class Invoice extends BaseModel
     {
         if ($this->is_deleted || $this->status_id == self::STATUS_PAID || $this->balance < 0) {
             return false;
-        } elseif ($this->status_id == self::STATUS_DRAFT && $this->is_deleted == false) {
+        } elseif ($this->status_id == self::STATUS_DRAFT && !$this->is_deleted) { // @phpstan-ignore-line
             return true;
-        } elseif ($this->status_id == self::STATUS_SENT && !$this->is_deleted && $this->balance > 0) {
+        } elseif ($this->status_id == self::STATUS_SENT && !$this->is_deleted && $this->balance > 0) { // @phpstan-ignore-line
             return true;
-        } elseif ($this->status_id == self::STATUS_PARTIAL && !$this->is_deleted && $this->balance > 0) {
+        } elseif ($this->status_id == self::STATUS_PARTIAL && !$this->is_deleted && $this->balance > 0) { // @phpstan-ignore-line
             return true;
         } else {
             return false;
@@ -642,6 +642,11 @@ class Invoice extends BaseModel
         });
     }
 
+    public function isSelfBilled(): bool
+    {
+        return trim((string) data_get($this->e_invoice, 'Invoice.InvoiceTypeCode.value')) === '389';
+    }
+
     /**
      * Determines whether automatic tax calculation
      * should be blocked from mutating this invoice.
@@ -654,6 +659,10 @@ class Invoice extends BaseModel
      */
     public function isTaxImmutable(): bool
     {
+        if ($this->isSelfBilled()) {
+            return true;
+        }
+
         return in_array($this->status_id, [
             self::STATUS_PAID,
             self::STATUS_CANCELLED,

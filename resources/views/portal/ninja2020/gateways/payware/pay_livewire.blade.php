@@ -23,7 +23,7 @@
         @component('portal.ninja2020.components.general.card-element', ['title' => ctrans('texts.payment') . ' ID'])
             <span style="display: inline-flex; align-items: center; gap: 0.375rem;">
                 <span class="text-sm leading-5 text-gray-900" id="payware-payment-id">{{ $transaction_id }}</span>
-                <button type="button" style="background: none; border: none; padding: 0.125rem; cursor: pointer; color: #6b7280; display: inline-flex; align-items: center;" onclick="paywareCopyId(event)" title="{{ ctrans('texts.copy') }}">
+                <button type="button" class="hover:opacity-80" style="background: none; border: none; padding: 0.125rem; cursor: pointer; color: #6b7280; display: inline-flex; align-items: center;" onclick="paywareCopyId(event)" title="{{ ctrans('texts.copy') }}">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                 </button>
             </span>
@@ -37,7 +37,7 @@
         <div id="payware-qr-fallback" style="display: none; padding: 1rem; text-align: center; font-size: 0.875rem; color: #6b7280; word-break: break-all;"></div>
 
         <div class="payware-deeplink-container" style="flex-direction: column; align-items: center; padding: 1rem;" id="payware-deeplink-container">
-            <a href="payware://{{ $transaction_id }}" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background-color: #059669; color: #ffffff; font-weight: 600; font-size: 1rem; border-radius: 0.5rem; text-decoration: none;">
+            <a href="{{ $payware_link }}" class="button button-primary leading-normal" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background-color: #059669; color: #ffffff; font-weight: 600; font-size: 1rem; border-radius: 0.5rem; text-decoration: none;">
                 {{ ctrans('texts.pay_now') }}
             </a>
             <span style="margin-top: 0.5rem; font-size: 0.75rem; color: #6b7280; text-align: center;">
@@ -69,6 +69,7 @@
     @script
     <script>
     const transactionId = @json($transaction_id);
+    const paywareLink = @json($payware_link);
     const paymentHash = @json($payment_hash);
     const timeToLive = @json($time_to_live);
     const statusUrl = @json($gateway->genericWebhookUrl()) + '?check_status=1&payment_hash=' + encodeURIComponent(@json($payment_hash));
@@ -100,7 +101,7 @@
         const fallback = $('payware-qr-fallback');
         if (fallback) {
             fallback.style.display = 'block';
-            fallback.textContent = 'payware://' + transactionId;
+            fallback.textContent = paywareLink;
         }
     }
 
@@ -115,7 +116,7 @@
             }
             try {
                 new QRCode(qrContainer, {
-                    text: 'payware://' + transactionId,
+                    text: paywareLink,
                     width: 250,
                     height: 250,
                     colorDark: '#000000',

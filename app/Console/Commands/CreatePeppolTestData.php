@@ -189,7 +189,7 @@ class CreatePeppolTestData extends Command
                 'address1' => 'Gran Via 1',
                 'gov_id' => 'S2800001A', 'individual_id' => '12345678Z', 'individual_vat' => '',
             ],
-            // FI — Storecove test: FI:OVT 003708888888CCC (FI:VAT is deprecated). Routing FI:OPID 003721291126.
+            // FI — Peppol: FI:OVT2 003708888888CCC (ICD 0216); no operator id required.
             'FI' => [
                 'vat' => 'FI01010101', 'id_number' => '003708888888CCC', 'tax_rate' => 25.5, 'tax_name' => 'ALV',
                 'city' => 'Helsinki', 'state' => 'Uusimaa', 'postal_code' => '00100', 'currency' => '3',

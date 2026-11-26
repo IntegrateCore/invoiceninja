@@ -169,7 +169,7 @@ class SendRecurring implements ShouldQueue
         }
 
         $invoice->invitations->each(function ($invitation) use ($invoice) {
-            if ($invitation->contact && ! $invitation->contact->trashed() && strlen($invitation->contact->email) >= 1 && $invoice->client->getSetting('auto_email_invoice') && !$invitation->contact->is_locked) {
+            if ($invitation->contact && ! $invitation->contact->trashed() && strlen($invitation->contact->email) >= 1 && $invoice->client->getSetting('auto_email_invoice') && !$invitation->contact->is_locked) { //@phpstan-ignore-line
                 try {
                     EmailEntity::dispatch($invitation->withoutRelations(), $invoice->company->db, 'invoice')->delay(rand(1, 2));
                 } catch (\Exception $e) {
@@ -199,6 +199,7 @@ class SendRecurring implements ShouldQueue
             $ii->key = $this->createDbHash($invoice->company->db);
             $ii->invoice_id = $invoice->id;
             $ii->client_contact_id = $recurring_invitation->client_contact_id;
+            $ii->can_sign = $recurring_invitation->can_sign;
             $ii->save();
         });
 

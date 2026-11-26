@@ -40,6 +40,14 @@ class DocumentFilters extends QueryFilters
     }
 
     /**
+     * Documents do not support the shared active/archived/deleted lifecycle.
+     */
+    public function status(string $filter = ''): Builder
+    {
+        return $this->builder;
+    }
+
+    /**
      * Overriding method as client_id does
      * not exist on this model, just pass
      * back the builder
@@ -88,18 +96,27 @@ class DocumentFilters extends QueryFilters
     {
         $types = explode(',', $types);
 
-        foreach ($types as $type) {
-            match ($type) {
-                'private' => $this->builder->where('is_public', 0),
-                'public' => $this->builder->where('is_public', 1),
-                'pdf' => $this->builder->where('type', 'pdf'),
-                'image' => $this->builder->whereIn('type', ['png','jpeg','jpg','gif','svg']),
-                'other' => $this->builder->whereNotIn('type', ['pdf','png','jpeg','jpg','gif','svg']),
-                default => $this->builder,
-            };
-        }
+        // Values are ORed within the visibility and file type groups, the groups are ANDed
+        $this->builder->where(function ($query) use ($types) {
+            foreach ($types as $type) {
+                match ($type) {
+                    'private' => $query->orWhere('is_public', 0),
+                    'public' => $query->orWhere('is_public', 1),
+                    default => $query,
+                };
+            }
+        });
 
-        return $this->builder;
+        return $this->builder->where(function ($query) use ($types) {
+            foreach ($types as $type) {
+                match ($type) {
+                    'pdf' => $query->orWhere('type', 'pdf'),
+                    'image' => $query->orWhereIn('type', ['png','jpeg','jpg','gif','svg']),
+                    'other' => $query->orWhereNotIn('type', ['pdf','png','jpeg','jpg','gif','svg']),
+                    default => $query,
+                };
+            }
+        });
     }
 
     /**
@@ -140,6 +157,56 @@ class DocumentFilters extends QueryFilters
      * @return Builder
      */
     public function is_deleted($value = 'true')
+    {
+        return $this->builder;
+    }
+
+    /**
+     * with_trashed
+     *
+     * There is no is_deleted prop, so just return the builder.
+     *
+     * @param  string $value
+     * @return Builder
+     */
+    public function with_trashed($value)
+    {
+        return $this->builder;
+    }
+
+    /**
+     * filter_deleted_clients
+     *
+     * There is no client relation, so just return the builder.
+     *
+     * @param  string $value
+     * @return Builder
+     */
+    public function filter_deleted_clients($value = null)
+    {
+        return $this->builder;
+    }
+
+    /**
+     * without_deleted_clients
+     *
+     * There is no client relation, so just return the builder.
+     *
+     * @return Builder
+     */
+    public function without_deleted_clients(): Builder
+    {
+        return $this->builder;
+    }
+
+    /**
+     * without_deleted_vendors
+     *
+     * There is no vendor relation, so just return the builder.
+     *
+     * @return Builder
+     */
+    public function without_deleted_vendors(): Builder
     {
         return $this->builder;
     }

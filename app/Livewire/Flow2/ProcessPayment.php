@@ -88,6 +88,13 @@ class ProcessPayment extends Component
 
             $this->payment_data_payload = $driver->processPaymentViewData($responder_data['payload']);
 
+            if (!empty($this->payment_data_payload['ach_redirect_url'])) {
+                $this->redirect($this->payment_data_payload['ach_redirect_url']);
+                $this->skipRender();
+
+                return;
+            }
+
             $this->payment_view = $driver->livewirePaymentView(
                 $this->payment_data_payload,
             );
@@ -126,8 +133,14 @@ class ProcessPayment extends Component
         $bag->add('gateway_error', $e->getMessage());
         session()->put('errors', $errors->put('default', $bag));
 
-        $invoice_id = $this->getContext($this->_key)['payable_invoices'][0]['invoice_id'];
-        $this->redirectRoute('client.invoice.show', ['invoice' => $invoice_id]);
+        $invoice_id = $this->getContext($this->_key)['payable_invoices'][0]['invoice_id'] ?? null;
+        
+        if ($invoice_id) {
+            $this->redirectRoute('client.invoice.show', ['invoice' => $invoice_id]);
+        } else {
+            $this->redirectRoute('client.invoices.index');
+        }
+
         $stopPropagation();
 
     }

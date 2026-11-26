@@ -126,11 +126,20 @@ class InvoiceController extends BaseController
      */
     public function index(InvoiceFilters $filters)
     {
-        set_time_limit(45);
+        return $this->withinTimeLimit(45, function () use ($filters) {
+            $invoices = Invoice::filter($filters)->with('tags');
 
-        $invoices = Invoice::filter($filters)->with('tags');
+            /** Fixes for N+1 eager loading */
+            foreach ($this->getRequestIncludes([]) as $include) {
+                if (explode('.', $include)[0] === 'payments') {
+                    $invoices->with('payments.documents');
 
-        return $this->listResponse($invoices);
+                    break;
+                }
+            }
+
+            return $this->listResponse($invoices);
+        });
     }
 
     /**
@@ -245,7 +254,7 @@ class InvoiceController extends BaseController
                            ->adjustInventory()
                            ->save();
 
-        event(new InvoiceWasCreated($invoice, $invoice->company, Ninja::eventVars($user ? $user->id : null)));
+        event(new InvoiceWasCreated($invoice, $invoice->company, Ninja::eventVars($user->id)));
 
         Atomic::del($request->lock_key);
 
@@ -577,7 +586,7 @@ class InvoiceController extends BaseController
             return response()->json(['message' => ctrans('texts.sent_message')], 200);
         }
 
-        if ($action == 'download' && $invoices->count() >= 1 && $user->can('view', $invoices->first())) {
+        if ($action == 'download' && $invoices->isNotEmpty() && $user->can('view', $invoices->first())) {
 
             $filename = $invoices->first()->getFileName();
 

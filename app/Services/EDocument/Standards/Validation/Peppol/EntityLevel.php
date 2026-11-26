@@ -28,8 +28,8 @@ use App\Exceptions\PeppolValidationException;
 use App\Services\EDocument\Standards\Validation\EntityLevelInterface;
 use App\Services\EDocument\Standards\Validation\XsltDocumentValidator;
 use App\Services\EDocument\Gateway\Storecove\Identifiers\StorecoveIdentifierValidator;
-use App\Services\EDocument\Gateway\Storecove\StorecoveRouter;
 use App\Services\EDocument\Standards\Peppol\CountryFactory;
+use App\Services\EDocument\Gateway\Storecove\StorecoveRouter;
 
 class EntityLevel implements EntityLevelInterface
 {
@@ -185,7 +185,7 @@ class EntityLevel implements EntityLevelInterface
 
         $this->checkNexus($invoice->client);
 
-        $this->errors['passes'] = count($this->errors['invoice']) == 0 && count($this->errors['client']) == 0 && count($this->errors['company']) == 0;
+        $this->errors['passes'] = count($this->errors['invoice']) == 0 && count($this->errors['company']) == 0;
 
         return $this->errors;
 
@@ -347,7 +347,8 @@ class EntityLevel implements EntityLevelInterface
     {
         $value = trim($client->routing_id ?? '');
 
-        if ($value === '') {
+        // Finland checks GLN first, then OVT in either field through its handler.
+        if ($value === '' || $client->country->iso_3166_2 === 'FI') {
             return null;
         }
 

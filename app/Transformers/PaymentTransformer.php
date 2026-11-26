@@ -26,8 +26,6 @@ class PaymentTransformer extends EntityTransformer
 {
     use MakesHash;
 
-    protected $serializer;
-
     protected array $defaultIncludes = [
         'paymentables',
         'documents',
@@ -41,13 +39,6 @@ class PaymentTransformer extends EntityTransformer
         'activities',
     ];
 
-    public function __construct($serializer = null)
-    {
-        parent::__construct();
-
-        $this->serializer = $serializer;
-    }
-
     /**
      * @param Payment $payment
      *
@@ -55,49 +46,62 @@ class PaymentTransformer extends EntityTransformer
      */
     public function includeActivities(Payment $payment)
     {
-        $transformer = new ActivityTransformer($this->serializer);
+        $transformer = new ActivityTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($payment->activities, $transformer, Activity::class);
     }
 
     public function includeInvoices(Payment $payment)
     {
-        $transformer = new InvoiceTransformer($this->serializer);
+        $invoices = $payment->invoices;
 
-        return $this->includeCollection($payment->invoices, $transformer, Invoice::class);
+        $invoices->loadMissing([
+            'tags',
+            'documents',
+            'invitations.company',
+            'invitations.contact',
+        ]);
+        
+        $transformer = new InvoiceTransformer($this->serializer, $this->user);
+
+        return $this->includeCollection($invoices, $transformer, Invoice::class);
     }
 
     public function includeCredits(Payment $payment)
     {
-        $transformer = new CreditTransformer($this->serializer);
+        $transformer = new CreditTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($payment->credits, $transformer, Credit::class);
     }
 
     public function includeClient(Payment $payment)
     {
-        $transformer = new ClientTransformer($this->serializer);
+        $transformer = new ClientTransformer($this->serializer, $this->user);
+
+        if($this->user?->cannot('view', $payment->client)) {
+            $transformer = new ClientProfileTransformer($this->serializer, $this->user);
+        }
 
         return $this->includeItem($payment->client, $transformer, Client::class);
     }
 
     public function includePaymentables(Payment $payment)
     {
-        $transformer = new PaymentableTransformer($this->serializer);
+        $transformer = new PaymentableTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($payment->paymentables, $transformer, Paymentable::class);
     }
 
     public function includeDocuments(Payment $payment)
     {
-        $transformer = new DocumentTransformer($this->serializer);
+        $transformer = new DocumentTransformer($this->serializer, $this->user);
 
         return $this->includeCollection($payment->documents, $transformer, Document::class);
     }
 
     public function includeType(Payment $payment)
     {
-        return $this->includeItem($payment, new PaymentTypeTransformer(), PaymentType::class);
+        return $this->includeItem($payment, new PaymentTypeTransformer(null, $this->user), PaymentType::class);
     }
 
     public function transform(Payment $payment)
@@ -120,7 +124,7 @@ class PaymentTransformer extends EntityTransformer
             'type_id' => (string) $payment->type_id ?: '',
             'invitation_id' => (string) $payment->invitation_id ?: '',
             'private_notes' => (string) $payment->private_notes ?: '',
-            'number' => (string) $payment->number ?: '',
+            'number' => (string) ($payment->number ?? ''),
             'custom_value1' => (string) $payment->custom_value1 ?: '',
             'custom_value2' => (string) $payment->custom_value2 ?: '',
             'custom_value3' => (string) $payment->custom_value3 ?: '',

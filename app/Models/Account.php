@@ -212,7 +212,12 @@ class Account extends BaseModel
     {
         return $this->hasMany(Company::class);
     }
-
+    
+    /**
+     * bank_integrations
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
     public function bank_integrations(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(BankIntegration::class);
@@ -314,7 +319,7 @@ class Account extends BaseModel
     public function isPremium(): bool
     {
         // return true;
-        return Ninja::isHosted() && $this->isPaidHostedClient() && !$this->isTrial() && (int) Carbon::createFromTimestamp($this->created_at)->diffInMonths() > 1;
+        return Ninja::isHosted() && $this->isPaidHostedClient() && !$this->isTrial() && Carbon::createFromTimestamp($this->created_at)->lt(now()->subMonth());
     }
 
     public function isPaidHostedClient(): bool

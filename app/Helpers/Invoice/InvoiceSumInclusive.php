@@ -35,6 +35,8 @@ class InvoiceSumInclusive
 
     public $tax_map;
 
+    public $reverse_tax_map;
+
     public $invoice_item;
 
     public $total_taxes = 0;
@@ -70,6 +72,7 @@ class InvoiceSumInclusive
         $this->rappen_rounding = $this->client->getSetting('enable_rappen_rounding');
 
         $this->tax_map = new Collection();
+        $this->reverse_tax_map = new Collection();
     }
 
     public function build()
@@ -330,7 +333,8 @@ class InvoiceSumInclusive
 
     public function roundRappen($value): float
     {
-        return round($value / .05, 0) * .05;
+        // return round($value / .05, 0) * .05;
+        return round(round($value / 0.05) * 0.05, 2);
     }
 
     public function getSubTotal()
@@ -405,12 +409,32 @@ class InvoiceSumInclusive
                 return $value['key'] == $key;
             })->sum('base_amount');
 
-            $tax_id = $values->first()['tax_id'] ?? '';
-
             $this->tax_map[] = ['name' => $tax_name, 'total' => $total_line_tax, 'tax_id' => $tax_id, 'tax_rate' => $tax_rate, 'base_amount' => round($base_amount, 2)];
 
             $this->total_taxes += $total_line_tax;
 
+        }
+
+        $this->setReverseTaxMap();
+
+        return $this;
+    }
+
+    private function setReverseTaxMap(): self
+    {
+        $this->reverse_tax_map = collect();
+        $values = $this->invoice_items->getGroupedReverseTaxes();
+
+        foreach ($values->pluck('key')->unique() as $key) {
+            $rows = $values->filter(fn ($value) => $value['key'] === $key);
+
+            $this->reverse_tax_map->push([
+                'name' => $rows->pluck('tax_name')->first(),
+                'total' => round($rows->sum('total'), $this->precision),
+                'tax_id' => $rows->pluck('tax_id')->first(),
+                'tax_rate' => $rows->pluck('tax_rate')->first(),
+                'base_amount' => round($rows->sum('base_amount'), $this->precision),
+            ]);
         }
 
         return $this;
@@ -419,6 +443,16 @@ class InvoiceSumInclusive
     public function getTaxMap()
     {
         return $this->tax_map;
+    }
+
+    public function getReverseTaxMap()
+    {
+        return $this->reverse_tax_map;
+    }
+
+    public function getTaxMapForDisplay()
+    {
+        return $this->tax_map->concat($this->reverse_tax_map);
     }
 
     public function getBalance()
