@@ -12,8 +12,8 @@ jobs:
       contents: read
       packages: write
     outputs:
-      digest: }
-      config: }
+      digest: ${{ steps.publish.outputs.digest }}
+      config: ${{ steps.publish.outputs.config }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,12 +49,12 @@ jobs:
       - name: Publish the validated image and verify its registry manifest
         id: publish
         env:
-          GHCR_TOKEN: }
-          VALIDATED_CONFIG: }
+          GHCR_TOKEN: ${{ github.token }}
+          VALIDATED_CONFIG: ${{ steps.validate.outputs.config }}
         run: |
           set -euo pipefail
           package=ghcr.io/integratecore/invoiceninja
-          tag="$package:candidate-173ff5a-98090aa--"
+          tag="$package:candidate-173ff5a-98090aa-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           test "$(docker image inspect --format '{{.Id}}' invoiceninja:combined-validation)" = "$VALIDATED_CONFIG"
           export DOCKER_CONFIG="$(mktemp -d)"
           trap 'rm -rf "$DOCKER_CONFIG"' EXIT
@@ -92,9 +92,9 @@ jobs:
     steps:
       - name: Pull the candidate by digest on a fresh runner
         env:
-          GHCR_TOKEN: }
-          DIGEST: }
-          EXPECTED_CONFIG: }
+          GHCR_TOKEN: ${{ github.token }}
+          DIGEST: ${{ needs.candidate.outputs.digest }}
+          EXPECTED_CONFIG: ${{ needs.candidate.outputs.config }}
         run: |
           set -euo pipefail
           [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
