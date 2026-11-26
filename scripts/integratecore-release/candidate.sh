@@ -22,18 +22,10 @@ node -e 'const [major, minor] = process.versions.node.split(".").map(Number); pr
 registry_token=${GHCR_TOKEN:-}
 unset GHCR_TOKEN
 if [[ -z $registry_token ]]; then
-    read -rsp "Existing backend package writer token: " registry_token
+    IFS= read -rsp "Existing backend package writer token: " registry_token
     printf '\n' >&2
 fi
-[[ $registry_token =~ ^[A-Za-z0-9_]+$ ]] || fail "Expected an existing GitHub package token"
-# Refuse to create a missing package or publish to a non-private one.
-require_private_package() {
-    printf 'header = "Authorization: Bearer %s"\n' "$registry_token" |
-        curl -q -fsS --max-time 20 --config - https://api.github.com/orgs/IntegrateCore/packages/container/invoiceninja |
-        jq -e '.name == "invoiceninja" and .visibility == "private"' >/dev/null ||
-        fail "Cannot verify the existing private backend package with this token"
-}
-require_private_package
+require_private_package "$registry_token"
 
 work=$(mktemp -d)
 run_id=$(openssl rand -hex 8)
@@ -139,7 +131,7 @@ docker exec -i "${app_env[@]}" -e APP_ENV=testing \
     -e DB_HOST1=mysql -e DB_DATABASE1=ninja -e DB_USERNAME1=ninja -e DB_PASSWORD1="$db_secret" "$test_app" bash -se < "$script_dir/test-candidate.sh"
 docker rm -fv "$test_app" >/dev/null
 
-require_private_package
+require_private_package "$registry_token"
 mkdir -m 700 "$work/docker-auth"
 registry=(docker --config "$work/docker-auth")
 printf '%s' "$registry_token" | "${registry[@]}" login ghcr.io --username "$registry_user" --password-stdin

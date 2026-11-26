@@ -4,6 +4,25 @@ fail() { echo "$*" >&2; exit 1; }
 sha() { [[ $1 =~ ^[0-9a-f]{40}$ ]]; }
 digest() { [[ $1 =~ ^sha256:[0-9a-f]{64}$ ]]; }
 
+# Send one literal header via stdin, never via curl argv or curl configuration.
+require_private_package() {
+    local LC_ALL=C token=$1 response
+    [[ $token =~ ^[A-Za-z0-9_.-]+$ ]] || fail "Expected an existing GitHub package token"
+    response=$(
+        printf 'Authorization: Bearer %s\n' "$token" |
+            curl -q -fs --max-time 20 --header @- \
+                --header 'Accept: application/vnd.github+json' \
+                --write-out '\n%{http_code}' \
+                https://api.github.com/orgs/IntegrateCore/packages/container/invoiceninja
+    ) || fail "Cannot verify the existing private backend package with this token"
+    [[ ${response##*$'\n'} == 200 ]] &&
+        jq -se 'length == 1 and (.[0] |
+            .name == "invoiceninja" and .package_type == "container"
+            and (.owner.login | ascii_downcase) == "integratecore"
+            and .visibility == "private")' <<< "${response%$'\n'*}" >/dev/null 2>&1 ||
+        fail "Cannot verify the existing private backend package with this token"
+}
+
 read_handoff() {
     handoff=$(jq -ces 'select(length == 1) | .[0] |
         select(type == "object" and keys == ["backend","image","php_base","ui","version"] and .version == 1)' "$1") ||

@@ -8,6 +8,42 @@ reject() {
     fi
 }
 
+# Exercise the real token validation and privacy gate without real credentials or network.
+curl() {
+    local header
+    [[ $# == 11 && $1 == -q && $2 == -fs && $3 == --max-time && $4 == 20 &&
+        $5 == --header && $6 == @- && $7 == --header &&
+        $8 == 'Accept: application/vnd.github+json' && $9 == --write-out &&
+        ${10} == '\n%{http_code}' &&
+        ${11} == https://api.github.com/orgs/IntegrateCore/packages/container/invoiceninja ]] || return 2
+    IFS= read -r header && [[ $header == "Authorization: Bearer $fixture_token" ]] || return 2
+    if IFS= read -r header || [[ -n $header ]]; then return 2; fi
+    printf '%s\n%s' "$fixture_package" "$fixture_http"
+    return "$fixture_curl_exit"
+}
+fixture_private='{"name":"invoiceninja","package_type":"container","owner":{"login":"IntegrateCore"},"visibility":"private"}'
+fixture_package=$fixture_private fixture_http=200 fixture_curl_exit=0
+for fixture_token in ghs_legacy0123 'eyJ-a_b.eyJ-c_d.sig-n_ature' 'ghs_opaque-0123'; do
+    require_private_package "$fixture_token"
+done
+for fixture_token in '' ' ' ' valid' 'valid ' $'valid\t' $'valid\r' $'valid\nX-Injected: yes' \
+    $'valid\x1b' 'valid"quote' 'valid\escape' 'valid:header' 'valid=option' 'valid/config'; do
+    if message=$(require_private_package "$fixture_token" 2>&1) ||
+        [[ $message != 'Expected an existing GitHub package token' ]]; then
+        fail "Malformed credential was not rejected before the metadata request"
+    fi
+done
+fixture_token=ghs_fixture
+fixture_http=403 reject require_private_package "$fixture_token"
+fixture_http=302 reject require_private_package "$fixture_token"
+fixture_curl_exit=22 reject require_private_package "$fixture_token"
+fixture_package=invalid reject require_private_package "$fixture_token"
+fixture_package="$fixture_private $fixture_private" reject require_private_package "$fixture_token"
+for change in '.visibility="public"' 'del(.visibility)' '.name="wrong"' \
+    '.package_type="npm"' '.owner.login="wrong"' 'del(.owner)'; do
+    fixture_package=$(jq "$change" <<< "$fixture_private") reject require_private_package "$fixture_token"
+done
+
 php_base=sha256:6d2c08c2ce0548e9bc55e21aab68f5a2613e635e4225fdea84290459728995e7
 runtime_profile
 reject bash -c "$(declare -f fail runtime_profile); php_base=sha256:$(printf '%064d' 0); runtime_profile"
@@ -75,4 +111,4 @@ verify_manifest "$config" <<< "$manifest" >/dev/null
 reject verify_manifest "sha256:$(printf '%064d' 2)" <<< "$manifest"
 reject verify_manifest "$config" <<< "$(jq '.manifests=[]' <<< "$manifest")"
 reject verify_manifest "$config" <<< "$manifest $manifest"
-echo "Runtime, provenance and registry manifest gates passed"
+echo "Package privacy, runtime, provenance and registry manifest gates passed"
