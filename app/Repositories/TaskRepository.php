@@ -164,6 +164,8 @@ class TaskRepository extends BaseRepository
      */
     public function save(array $data, Task $task): ?Task
     {
+        $previousClientId = $task->getOriginal('client_id');
+
         if ($task->id) {
             $this->new_task = false;
         }
@@ -307,6 +309,7 @@ class TaskRepository extends BaseRepository
         $task->time_log = json_encode($time_log);
 
         $task->saveQuietly();
+        app(\App\Services\IntegrateCore\ConsultingHours::class)->syncTask($task, $previousClientId);
 
         if (array_key_exists('documents', $data)) {
             $this->saveDocuments($data['documents'], $task);
