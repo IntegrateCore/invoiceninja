@@ -12,6 +12,19 @@ on:
         required: true
         type: string
 
+  workflow_call:
+    inputs:
+      release_sha:
+        description: Full reviewed PR 12 checkout SHA (same SHA as the reusable workflow)
+        required: true
+        type: string
+      backend_sha:
+        required: true
+        type: string
+      ui_sha:
+        required: true
+        type: string
+
 concurrency:
   group: integratecore-immutable-candidate
   cancel-in-progress: false
@@ -21,31 +34,44 @@ permissions:
 
 jobs:
   candidate:
+    if: >-
+      github.repository == 'IntegrateCore/invoiceninja' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/ci/integratecore-pr12-candidate-20261126'))
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Require an exact release checkout for the isolated caller
+        if: github.event_name == 'push'
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: '[[ $RELEASE_SHA =~ ^[0-9a-f]{40}$ ]]'
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          ref: ${{ inputs.release_sha || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@v4
+          sparse-checkout: scripts/integratecore-release
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962
         with:
           php-version: '8.4'
           extensions: bcmath, gd, imagick, intl, mbstring, pdo_mysql, soap, zip
           tools: composer:v2
           coverage: none
+      - name: Verify the release gates
+        run: bash scripts/integratecore-release/test-release-gates.sh
       - name: Build, test, publish and verify digest
         env:
           BACKEND_SHA: ${{ inputs.backend_sha }}
           UI_SHA: ${{ inputs.ui_sha }}
           GHCR_TOKEN: ${{ github.token }}
         run: bash scripts/integratecore-release/candidate.sh "$BACKEND_SHA" "$UI_SHA" "$GITHUB_ACTOR" release-handoff.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-handoff
           path: release-handoff.json

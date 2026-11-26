@@ -5,7 +5,9 @@ sha() { [[ $1 =~ ^[0-9a-f]{40}$ ]]; }
 digest() { [[ $1 =~ ^sha256:[0-9a-f]{64}$ ]]; }
 
 read_handoff() {
-    handoff=$(jq -ce 'select(keys == ["backend","image","php_base","ui","version"] and .version == 1)' "$1")
+    handoff=$(jq -ces 'select(length == 1) | .[0] |
+        select(type == "object" and keys == ["backend","image","php_base","ui","version"] and .version == 1)' "$1") ||
+        fail "Invalid handoff document"
     backend=$(jq -r .backend <<< "$handoff")
     ui=$(jq -r .ui <<< "$handoff")
     image=$(jq -r .image <<< "$handoff")
@@ -25,16 +27,45 @@ verify_labels() {
     ' <<< "$labels" >/dev/null
 }
 
+# Reviewed Dockerfile base. The PHP source bundled with this image declares
+# ZIP 1.22.8 in ext/zip/php_zip.h; that version is independent of PHP_VERSION.
+runtime_profile() {
+    [[ $php_base == sha256:6d2c08c2ce0548e9bc55e21aab68f5a2613e635e4225fdea84290459728995e7 ]] ||
+        fail "PHP base has no reviewed runtime profile"
+    expected_php=8.4.27
+    expected_zip=1.22.8
+}
+
+verify_manifest() {
+    local config=$1
+    jq -es --arg config "$config" '
+        length == 1 and (.[0] |
+            .schemaVersion == 2
+            and (.mediaType == "application/vnd.docker.distribution.manifest.v2+json"
+                or .mediaType == "application/vnd.oci.image.manifest.v1+json")
+            and .config.digest == $config and (has("manifests") | not)
+            and (.layers | type == "array" and length > 0))
+    '
+}
+
 verify_runtime() {
-    local version
-    version=$(docker run --rm --network none --entrypoint php "$1" -r '
-        if (PHP_VERSION_ID < 80427 || PHP_VERSION_ID >= 80500) exit(1);
-        foreach (["bcmath","exif","gd","intl","soap","Zend OPcache","pdo_mysql","zip"] as $e)
-            if (!extension_loaded($e) || phpversion($e) !== PHP_VERSION) exit(1);
+    runtime_profile
+    docker run --rm --network none --entrypoint php "$1" -r '
+        if (PHP_VERSION_ID < 80427 || PHP_VERSION_ID >= 80500 || PHP_VERSION !== $argv[1]) {
+            fwrite(STDERR, "Unexpected PHP CLI version\n"); exit(1);
+        }
+        foreach (["bcmath","exif","gd","intl","soap","Zend OPcache","pdo_mysql"] as $e) {
+            if (!extension_loaded($e) || phpversion($e) !== PHP_VERSION) {
+                fwrite(STDERR, "Missing or mismatched PHP extension: $e\n"); exit(1);
+            }
+        }
+        if (!extension_loaded("zip") || phpversion("zip") !== $argv[2]) {
+            fwrite(STDERR, "Missing or mismatched ZIP extension\n"); exit(1);
+        }
         if (!extension_loaded("imagick") || bcadd("1","2",2) !== "3.00") exit(1);
-        echo PHP_VERSION;
-    ') || return 1
-    docker run --rm --network none --entrypoint php-fpm "$1" -v | grep -F "PHP $version" || return 1
+    ' -- "$expected_php" "$expected_zip" || return 1
+    docker run --rm --network none --entrypoint php-fpm "$1" -v |
+        grep -F "PHP $expected_php (fpm-fcgi)" || return 1
     docker run --rm --network none --entrypoint php-fpm "$1" -t || return 1
     docker run --rm --network none --entrypoint sh "$1" -ec '
         test -s public/build/manifest.json

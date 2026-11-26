@@ -43,29 +43,68 @@ If the runner or existing writer is unavailable, stop before publishing
 without provisioning either. Save the handoff and build log with the release
 review. Never substitute a tag for a digest.
 
-## GitHub Actions dispatch blocker
+## Isolated GitHub-hosted candidate before cutover
 
-Backend manual dispatch returned HTTP 422: `Actions has been disabled for
-this repository`. The repository is a public fork; its permission endpoint
-returned enabled=true and allowed_actions=all, and the workflow endpoint
-listed Deploy Dev as active. The fork's Actions tab was independently
-confirmed disabled. Explicit approval to re-enable it remains pending. The available identity got HTTP 403 for organization Actions policy;
-package metadata also returned HTTP 403 requiring read:packages. Do not
-change scope, settings or visibility to work around those responses.
+Run 45895223617 proved a prior image could be pulled by digest and boot on
+fresh disposable MySQL, with health and migrations passing. It did not check
+provenance and is not a release handoff. Run 45891287139 used a one-off build
+and proved that the backend repository's job token could write to the
+existing package then. Neither run proves the current job token can read
+private package metadata from the REST API. The candidate refuses to push
+unless that lookup succeeds and reports the named package is private. A
+403, missing package, or public visibility is a blocker, not permission to
+add credentials or skip the check.
 
-An existing org owner can compare Settings > Actions > General for the
-organization and backend repository, including repo/fork allowlists, with
-`gh api orgs/IntegrateCore/actions/permissions` and
-`gh api repos/IntegrateCore/invoiceninja/actions/permissions`. If those and
-the Actions tab agree but the 422 persists, give GitHub Support the repo,
-workflow ID, ref, UTC timestamp, exact error and X-GitHub-Request-Id, never
-the auth headers. Manual dispatch also requires the workflow on the default
-branch. Verify with an approved dispatch after cutover and confirm a run
-appears before relying on Actions. Until then, use the manual fallback.
+The reviewed backend pin is PHP 8.4.27; the bundled PHP source declares ZIP
+1.22.8 in `ext/zip/php_zip.h`. The existing staging runtime also reported
+those two versions independently. Its older PDO MySQL extension reported
+8.4.26 and is not accepted by this release gate; the pinned backend builds
+PDO MySQL from PHP source, where its extension version is PHP_VERSION.
+The candidate checks the exact base digest and parent layers, runtime,
+four source/base labels, and the exact registry manifest's config digest
+before booting the re-pulled linux/amd64 image and writing the handoff.
 
-https://docs.github.com/rest/actions/permissions
-https://docs.github.com/actions/how-tos/managing-workflow-runs/manually-running-a-workflow
-https://docs.github.com/packages/working-with-a-github-packages-registry/working-with-the-container-registry
+Without registering a workflow on the default branch, prepare a commit
+directly atop the exact reviewed PR #12 SHA. Add only the workflow below
+as `.github/workflows/integratecore-pr12-candidate-entry.yml`. Replace both
+`REVIEWED_PR12_SHA` occurrences with the same full commit SHA. Review the
+base tree's push workflows and any external hooks again before pushing.
+Only after separate authorization to publish, push the commit once to
+the previously unused `ci/integratecore-pr12-candidate-20261126` branch.
+That push is the trigger; do not push it as a preparation step or open a
+PR from that branch. Never use a deployment ref or alter a legacy workflow.
+
+```yaml
+name: IntegrateCore PR 12 isolated candidate
+on:
+  push:
+    branches: [ci/integratecore-pr12-candidate-20261126]
+    paths: [.github/workflows/integratecore-pr12-candidate-entry.yml]
+permissions: {}
+jobs:
+  candidate:
+    if: github.repository == 'IntegrateCore/invoiceninja' && github.ref == 'refs/heads/ci/integratecore-pr12-candidate-20261126'
+    permissions:
+      contents: read
+      packages: write
+    uses: IntegrateCore/invoiceninja/.github/workflows/integratecore-candidate.yml@REVIEWED_PR12_SHA
+    with:
+      release_sha: REVIEWED_PR12_SHA
+      backend_sha: 173ff5a8362e49956b1bdb59197b286aa449e1c8
+      ui_sha: 98090aa2595fddca5d1e8433c4436d1292245ec7
+```
+
+The caller grants no deploy secrets, environment access, or runner access
+beyond a GitHub-hosted runner with the backend repo's existing job token.
+It invokes the real reusable workflow and checks out its scripts from the
+same immutable revision. The caller is not a default-branch dispatch and
+does not reuse React Release. The existing repository is public: the run
+and artifact are not a confidential channel. The handoff contains only
+release identifiers, not package credentials or application configuration.
+Download it from the trusted successful run and transfer it privately to the
+operator. Do not add any private evidence or credentials to the artifact.
+If the release identifiers themselves must be private, do not use the public
+Actions route; use the authorized off-server fallback.
 
 ## Stage and promote
 
