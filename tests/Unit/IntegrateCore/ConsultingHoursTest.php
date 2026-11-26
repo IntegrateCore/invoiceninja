@@ -7,6 +7,7 @@ use App\Console\Commands\SetupConsultingHoursMobile;
 use App\Mail\Admin\ConsultingHoursLow;
 use App\Models\Client;
 use App\Models\Company;
+use App\Models\Task;
 use App\Services\IntegrateCore\ConsultingHours;
 use App\Services\IntegrateCore\ConsultingHoursAlertSender;
 use Illuminate\Database\Schema\Blueprint;
@@ -37,6 +38,18 @@ class ConsultingHoursTest extends TestCase
             for ($slot = 1; $slot <= 4; $slot++) {
                 $table->string("custom_value{$slot}")->nullable();
             }
+            $table->timestamps();
+            $table->softDeletes();
+        });
+        Schema::create('tasks', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('company_id')->default(1);
+            $table->unsignedBigInteger('client_id')->nullable();
+            $table->unsignedBigInteger('status_id')->nullable();
+            $table->text('time_log')->nullable();
+            $table->decimal('consulting_hours_consumed', 20, 6)->default(0);
+            $table->unsignedBigInteger('consulting_hours_client_id')->nullable();
+            $table->boolean('is_deleted')->default(false);
             $table->timestamps();
             $table->softDeletes();
         });
@@ -218,6 +231,76 @@ class ConsultingHoursTest extends TestCase
         $this->app->instance(ConsultingHoursAlertSender::class, $sender);
         $this->artisan('integratecore:consulting-hours-alerts')->assertSuccessful();
         $this->assertNull(DB::table('clients')->value('consulting_hours_alerted_at'));
+    }
+
+    public function testOpenTaskCountsSavedBillableTimeAndClosingDoesNotCountTwice(): void
+    {
+        DB::table('clients')->insert(['id' => 1, 'consulting_hours_balance' => 5]);
+        DB::table('tasks')->insert([
+            'id' => 10,
+            'client_id' => 1,
+            'status_id' => 1,
+            'time_log' => json_encode([[1000, 4600], [4600, 8200, '', false], [8200, 0]]),
+        ]);
+        $hours = new ConsultingHours();
+        $stale = Task::findOrFail(10);
+        $hours->syncTask($stale);
+        $hours->syncTask($stale);
+        $this->assertEquals(4, DB::table('clients')->value('consulting_hours_balance'));
+        $this->assertEquals(1, DB::table('tasks')->value('consulting_hours_consumed'));
+        $this->assertEquals(1, DB::table('tasks')->value('consulting_hours_client_id'));
+
+        // The running timer counts only after it is stopped and its end is persisted.
+        DB::table('tasks')->update(['time_log' => json_encode([[1000, 4600], [8200, 10000]])]);
+        $hours->syncTask($stale);
+        $this->assertEquals(3.5, DB::table('clients')->value('consulting_hours_balance'));
+
+        DB::table('tasks')->update(['status_id' => 2]);
+        $hours->syncTask($stale);
+        $this->assertEquals(3.5, DB::table('clients')->value('consulting_hours_balance'));
+
+        // Reducing billed time refunds exactly the difference.
+        DB::table('tasks')->update(['time_log' => json_encode([[1000, 2800]])]);
+        $hours->syncTask($stale);
+        $this->assertEquals(4.5, DB::table('clients')->value('consulting_hours_balance'));
+    }
+
+    public function testLegacyDebitStaysAppliedOnceAndReassignmentMovesItToNewClient(): void
+    {
+        DB::table('clients')->insert([
+            ['id' => 1, 'consulting_hours_balance' => 4],
+            ['id' => 2, 'consulting_hours_balance' => 3],
+        ]);
+        DB::table('tasks')->insert([
+            'id' => 10,
+            'client_id' => 1,
+            'time_log' => json_encode([[1000, 4600]]),
+            'consulting_hours_consumed' => 1,
+        ]);
+        $hours = new ConsultingHours();
+        $hours->syncTask(Task::findOrFail(10));
+        $this->assertEquals(4, DB::table('clients')->find(1)->consulting_hours_balance);
+        $this->assertEquals(1, DB::table('tasks')->value('consulting_hours_client_id'));
+
+        DB::table('tasks')->update(['client_id' => 2]);
+        $hours->syncTask(Task::findOrFail(10));
+        $this->assertEquals(5, DB::table('clients')->find(1)->consulting_hours_balance);
+        $this->assertEquals(2, DB::table('clients')->find(2)->consulting_hours_balance);
+        $this->assertEquals(2, DB::table('tasks')->value('consulting_hours_client_id'));
+        $this->assertTrue($hours->needsAlert(Client::withoutEagerLoads()->findOrFail(2)));
+
+        DB::table('tasks')->update(['client_id' => null]);
+        $hours->syncTask(Task::findOrFail(10));
+        $this->assertEquals(3, DB::table('clients')->find(2)->consulting_hours_balance);
+        $this->assertEquals(0, DB::table('tasks')->value('consulting_hours_consumed'));
+        $this->assertNull(DB::table('tasks')->value('consulting_hours_client_id'));
+    }
+
+    public function testConsultingLedgerIsNotMassAssignable(): void
+    {
+        $task = new Task();
+        $this->assertFalse($task->isFillable('consulting_hours_consumed'));
+        $this->assertFalse($task->isFillable('consulting_hours_client_id'));
     }
 
     public function testQuietTaskAndInvoiceBalanceUpdatesPersistFundingAndResetState(): void

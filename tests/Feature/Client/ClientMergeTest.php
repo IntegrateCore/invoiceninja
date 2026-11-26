@@ -16,9 +16,11 @@ use App\Models\Account;
 use App\Models\Client;
 use App\Models\ClientContact;
 use App\Models\Company;
+use App\Models\Task;
 use App\Models\User;
 use App\Models\TransactionEvent;
 use App\Services\Client\Merge;
+use App\Services\IntegrateCore\ConsultingHours;
 use App\Services\EDocument\Standards\France\FranceReportingEventType;
 use App\Services\EDocument\Standards\France\FranceReportingStatus;
 use App\Services\EDocument\Standards\France\FranceScopeInvalidationRecorder;
@@ -190,6 +192,37 @@ class ClientMergeTest extends TestCase
 
         $this->assertSame($target->id, $event->fresh()->client_id);
         $this->assertNull(Client::withTrashed()->find($source->id));
+    }
+
+    public function testMergeRetainsAlreadyChargedTaskTimeInCombinedBalance(): void
+    {
+        [$company, $user] = $this->companyAndUser();
+        $target = Client::factory()->create([
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'consulting_hours_balance' => 3,
+        ]);
+        $source = Client::factory()->create([
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'consulting_hours_balance' => 4,
+        ]);
+        $task = Task::withoutEvents(fn () => Task::factory()->create([
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'client_id' => $source->id,
+            'time_log' => '[[1000,4600]]',
+            'consulting_hours_consumed' => 1,
+            'consulting_hours_client_id' => $source->id,
+        ]));
+
+        (new Merge($target, $source))->run();
+
+        $this->assertNull(Client::withTrashed()->find($source->id));
+        $this->assertEquals($target->id, $task->fresh()->client_id);
+        $this->assertEquals($target->id, $task->fresh()->consulting_hours_client_id);
+        app(ConsultingHours::class)->syncTask($task->fresh());
+        $this->assertEquals(7, $target->fresh()->consulting_hours_balance);
     }
 
     public function test_merge_rolls_back_entirely_when_a_downstream_failure_occurs(): void

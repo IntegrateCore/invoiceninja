@@ -111,7 +111,6 @@ class Task extends BaseModel
         'description',
         'is_running',
         'time_log',
-        'consulting_hours_consumed',
         'status_id',
         'status_sort_order', //deprecated
         'invoice_documents',

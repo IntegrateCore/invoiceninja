@@ -82,6 +82,12 @@ class Merge extends AbstractService
         $this->mergable_client->recurring_invoices()->update(['client_id' => $this->client->id]);
         $this->mergable_client->recurring_expenses()->update(['client_id' => $this->client->id]);
         $this->mergable_client->purchase_orders()->update(['client_id' => $this->client->id]);
+        // Both clients' net balances are combined below. Rekey the source client's
+        // existing task charges as well; those hours must not be deducted a second time.
+        $this->mergable_client->tasks()->where('consulting_hours_client_id', $this->mergable_client->id)->update([
+            'client_id' => $this->client->id,
+            'consulting_hours_client_id' => $this->client->id,
+        ]);
         $this->mergable_client->tasks()->update(['client_id' => $this->client->id]);
         $this->mergable_client->documents()->withTrashed()->update(['documentable_id' => $this->client->id]);
         $this->mergable_client->transaction_events()->update(['client_id' => $this->client->id]);

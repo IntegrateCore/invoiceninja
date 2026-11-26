@@ -175,6 +175,101 @@ class TaskRepositoryBulkUpdateTest extends TestCase
         $this->assertNull($task->project_id);
     }
 
+    public function testBulkClientReassignmentTransfersOnlyTheSelectedLegacyDebit(): void
+    {
+        $this->testClient->forceFill(['consulting_hours_balance' => 4])->saveQuietly();
+        $destination = Client::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'consulting_hours_balance' => 3,
+        ]);
+        $values = [
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'client_id' => $this->testClient->id,
+            'project_id' => $this->testProject->id,
+            'time_log' => '[[1000,4600]]',
+            'consulting_hours_consumed' => 1,
+            'consulting_hours_client_id' => null,
+        ];
+        // Seed pre-migration records without firing the new reconciliation.
+        $task = Task::withoutEvents(fn () => Task::factory()->create($values));
+        $excluded = Task::withoutEvents(fn () => Task::factory()->create($values));
+        $models = Task::whereKey($task->id);
+
+        $this->taskRepository->bulkUpdate($models, 'client_id', $destination->hashed_id);
+        $this->taskRepository->bulkUpdate(Task::whereKey($task->id), 'client_id', $destination->hashed_id);
+
+        $this->assertEquals(5, $this->testClient->fresh()->consulting_hours_balance);
+        $this->assertEquals(2, $destination->fresh()->consulting_hours_balance);
+        $this->assertEquals($destination->id, $task->fresh()->consulting_hours_client_id);
+        $this->assertNull($task->fresh()->project_id);
+        $this->assertEquals($this->testClient->id, $excluded->fresh()->client_id);
+        $this->assertNull($excluded->fresh()->consulting_hours_client_id);
+    }
+
+    public function testBulkProjectReassignmentMovesExistingDebitAndLeavesInvoicedTasks(): void
+    {
+        $this->testClient->forceFill(['consulting_hours_balance' => 4])->saveQuietly();
+        $destination = Client::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'consulting_hours_balance' => 3,
+        ]);
+        $project = Project::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'client_id' => $destination->id,
+        ]);
+        $invoice = \App\Models\Invoice::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'client_id' => $this->testClient->id,
+        ]);
+        $values = [
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'client_id' => $this->testClient->id,
+            'time_log' => '[[1000,4600]]',
+            'consulting_hours_consumed' => 1,
+            'consulting_hours_client_id' => $this->testClient->id,
+        ];
+        $task = Task::withoutEvents(fn () => Task::factory()->create($values));
+        $invoiced = Task::withoutEvents(fn () => Task::factory()->create($values + ['invoice_id' => $invoice->id]));
+
+        $this->taskRepository->bulkUpdate(Task::whereKey([$task->id, $invoiced->id]), 'project_id', $project->hashed_id);
+
+        $this->assertEquals(5, $this->testClient->fresh()->consulting_hours_balance);
+        $this->assertEquals(2, $destination->fresh()->consulting_hours_balance);
+        $this->assertEquals($project->id, $task->fresh()->project_id);
+        $this->assertEquals($destination->id, $task->fresh()->consulting_hours_client_id);
+        $this->assertEquals($this->testClient->id, $invoiced->fresh()->client_id);
+        $this->assertEquals($this->testClient->id, $invoiced->fresh()->consulting_hours_client_id);
+    }
+
+    public function testDirectTimerStopUsesSavedTimeAndUpdatesClientBalance(): void
+    {
+        $this->testClient->forceFill(['consulting_hours_balance' => 5])->saveQuietly();
+        $task = Task::factory()->create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'client_id' => $this->testClient->id,
+            'is_running' => true,
+            'time_log' => json_encode([[time() - 3600, 0, '', true]]),
+        ]);
+
+        $this->assertEquals(5, $this->testClient->fresh()->consulting_hours_balance);
+        $this->taskRepository->stop($task);
+        $this->taskRepository->stop($task->fresh());
+
+        $stopped = $task->fresh();
+        $this->assertFalse((bool) $stopped->is_running);
+        $hours = round($stopped->calcDuration(true) / 3600, 6);
+        $this->assertGreaterThan(0, $hours);
+        $this->assertEquals($hours, $stopped->consulting_hours_consumed);
+        $this->assertEquals(round(5 - $hours, 6), $this->testClient->fresh()->consulting_hours_balance);
+    }
+
     public function testBulkUpdateAssignedUser()
     {
         // Create tasks
