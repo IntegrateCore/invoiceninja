@@ -2,11 +2,21 @@
 set -euo pipefail
 work=$1
 umask 077
-curl -q -fsS --max-time 90 https://download.docker.com/linux/static/stable/x86_64/docker-29.1.3.tgz -o "$work/docker.tgz"
-tar -xzf "$work/docker.tgz" -C "$work"
+packages=https://download.docker.com/linux/ubuntu/dists/noble/pool/stable/amd64
+fetch_package() {
+    local filename=$1 checksum=$2
+    curl -q -fsS --max-time 70 "$packages/$filename" -o "$work/$filename"
+    printf '%s  %s\n' "$checksum" "$work/$filename" | sha256sum -c --status
+    dpkg-deb -x "$work/$filename" "$work/binaries"
+}
+fetch_package containerd.io_2.2.1-1~ubuntu.24.04~noble_amd64.deb 95e5464da24724dafc576075401c1e781f50f713f62237ee2ae93e220e3e1273
+fetch_package docker-ce_29.1.3-1~ubuntu.24.04~noble_amd64.deb 010dee76e0c1833e1e538b4897e914a2d2d23972acb8798baf056565202a06ab
+fetch_package docker-ce-cli_29.1.3-1~ubuntu.24.04~noble_amd64.deb 06e43beef08b66d39c24d38bcbe2e64889a59f6228ff715e1a27f967a3aa37cb
+bin="$work/binaries/usr/bin"
 printf '{}\n' > "$work/daemon.json"
 mkdir -m 700 "$work/client"
 daemon_pid=
+containerd_pid=
 registry_pid=
 registry_name=registry-fixture.invalid
 cert_dir=/etc/docker/certs.d/$registry_name
@@ -14,13 +24,28 @@ cleanup() {
     if [[ -s "$work/daemon.pid" ]]; then sudo kill "$(cat "$work/daemon.pid")" 2>/dev/null || true; fi
     if [[ -s "$work/registry.pid" ]]; then sudo kill "$(cat "$work/registry.pid")" 2>/dev/null || true; fi
     if [[ -n $daemon_pid ]]; then wait "$daemon_pid" || true; fi
+    if [[ -s "$work/containerd.pid" ]]; then sudo kill "$(cat "$work/containerd.pid")" 2>/dev/null || true; fi
+    if [[ -n $containerd_pid ]]; then wait "$containerd_pid" || true; fi
     if [[ -n $registry_pid ]]; then wait "$registry_pid" || true; fi
     if [[ -e "$work/hosts.original" ]]; then sudo cp "$work/hosts.original" /etc/hosts; fi
     if [[ -e "$work/cert-installed" ]]; then sudo rm -f "$cert_dir/ca.crt"; sudo rmdir "$cert_dir"; fi
 }
 trap cleanup EXIT
 
-sudo env PATH="$work/docker:$PATH" "$work/docker/dockerd" \
+printf 'version = 3\n' > "$work/containerd.toml"
+sudo env PATH="$bin:$PATH" sh -c '
+    echo "$" > "$1/containerd.pid"
+    exec "$2/containerd" --config "$1/containerd.toml" --root "$1/ct-data" \
+        --state "$1/ct-state" --address "$1/containerd.sock"
+' sh "$work" "$bin" > "$work/containerd.log" 2>&1 &
+containerd_pid=$!
+for _ in $(seq 1 15); do
+    if [[ -S "$work/containerd.sock" ]]; then break; fi
+    sleep 1
+done
+test -S "$work/containerd.sock"
+sudo env PATH="$bin:$PATH" "$bin/dockerd" \
+    --containerd "$work/containerd.sock" \
     --config-file "$work/daemon.json" --host "unix://$work/docker.sock" \
     --data-root "$work/data" --exec-root "$work/exec" --pidfile "$work/daemon.pid" \
     --feature containerd-snapshotter=true --bridge none \
@@ -28,7 +53,7 @@ sudo env PATH="$work/docker:$PATH" "$work/docker/dockerd" \
     > "$work/daemon.log" 2>&1 &
 daemon_pid=$!
 d() {
-    sudo env DOCKER_CONFIG="$work/client" "$work/docker/docker" --host "unix://$work/docker.sock" "$@"
+    sudo env DOCKER_CONFIG="$work/client" "$bin/docker" --host "unix://$work/docker.sock" "$@"
 }
 for _ in $(seq 1 30); do
     if d info >/dev/null 2>&1; then break; fi
