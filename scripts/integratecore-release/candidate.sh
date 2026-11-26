@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+script_dir=$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+source "$script_dir/common.sh"
 
 [[ $# == 4 ]] || fail "Usage: candidate.sh BACKEND_SHA UI_SHA REGISTRY_USER NEW_HANDOFF.json"
 backend=$1 ui=$2 registry_user=$3
@@ -34,9 +35,10 @@ run_id=$(openssl rand -hex 8)
 network="invoice-release-$run_id"
 database="$network-db"
 smoke="$network-app"
+test_app="$network-tests"
 candidate="$repository:candidate-${backend:0:12}-${ui:0:12}-$run_id"
 cleanup() {
-    docker rm -fv "$smoke" "$database" >/dev/null 2>&1 || true
+    docker rm -fv "$smoke" "$database" "$test_app" >/dev/null 2>&1 || true
     docker network rm "$network" >/dev/null 2>&1 || true
     docker image rm "$candidate" >/dev/null 2>&1 || true
     rm -rf "$work"
@@ -93,13 +95,15 @@ verify_labels "$candidate"
 verify_runtime "$candidate"
 
 # Keep test dependencies and database out of the published artifact.
-docker network create "$network" >/dev/null
+docker network create --internal "$network" >/dev/null
 db_secret=$(openssl rand -hex 24)
+db_root_secret=$(openssl rand -hex 24)
 app_key=base64:$(openssl rand -base64 32)
 start_db() {
     local attempt
     docker run -d --network "$network" --name "$database" --network-alias mysql \
-        -e MYSQL_ROOT_PASSWORD="$db_secret" -e MYSQL_DATABASE=ninja mysql:8.0 >/dev/null
+        -e MYSQL_ROOT_PASSWORD="$db_root_secret" -e MYSQL_DATABASE=ninja \
+        -e MYSQL_USER=ninja -e MYSQL_PASSWORD="$db_secret" --tmpfs /var/lib/mysql mysql:8.0 >/dev/null
     for ((attempt=0; attempt<60; attempt++)); do
         if docker exec "$database" sh -c \
             'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -h127.0.0.1 -uroot -e "SELECT 1" ninja' >/dev/null 2>&1; then
@@ -110,24 +114,21 @@ start_db() {
     fail "Disposable MySQL failed to start"
 }
 app_env=(
-    --network "$network" -e APP_KEY="$app_key" -e APP_URL=http://localhost
-    -e DB_CONNECTION=mysql -e DB_HOST=mysql -e DB_DATABASE=ninja -e DB_USERNAME=root
+    -e APP_KEY="$app_key" -e APP_URL=http://ninja.test
+    -e DB_CONNECTION=mysql -e DB_HOST=mysql -e DB_DATABASE=ninja -e DB_USERNAME=ninja
     -e DB_PASSWORD="$db_secret" -e DB_DATABASE3=ninja -e MULTI_DB_ENABLED=false
-    -e NINJA_ENVIRONMENT=selfhost -e CACHE_DRIVER=file -e CACHE_STORE=file
+    -e NINJA_ENVIRONMENT=selfhost -e CACHE_DRIVER=array -e CACHE_STORE=array
     -e SESSION_DRIVER=array -e QUEUE_CONNECTION=sync -e MAIL_MAILER=array
-    -e SENTRY_SAMPLE_RATE=0
+    -e SENTRY_SAMPLE_RATE=0 -e SCOUT_DRIVER=null
 )
 start_db
-docker run --rm "${app_env[@]}" -e APP_ENV=testing --entrypoint bash "$candidate" -euc '
-    composer install --no-interaction --no-progress --prefer-dist --no-scripts
-    php artisan package:discover
-    php artisan migrate --force
-    php artisan db:seed --force
-    vendor/bin/phpunit --fail-on-empty-test-suite tests/Unit/TaskRoundingTest.php
-    vendor/bin/phpunit --fail-on-empty-test-suite \
-        --filter "testPutRejectsOverlapAfterFirstTimeLogPair|testPutAllowsFinalRunningTimeLogEntry" \
-        tests/Feature/TaskApiTest.php
-'
+# Composer needs egress; the regression suite and smoke boot do not.
+docker run -d --network bridge --name "$test_app" --entrypoint sleep "$candidate" infinity >/dev/null
+docker exec "$test_app" composer install --no-interaction --no-progress --prefer-dist --no-scripts
+docker network connect "$network" "$test_app"
+docker network disconnect bridge "$test_app"
+docker exec -i "${app_env[@]}" -e APP_ENV=testing "$test_app" bash -se < "$script_dir/test-candidate.sh"
+docker rm -fv "$test_app" >/dev/null
 
 mkdir -m 700 "$work/docker-auth"
 registry=(docker --config "$work/docker-auth")
@@ -145,10 +146,9 @@ verify_runtime "$image"
 
 docker rm -fv "$database" >/dev/null
 start_db
-docker run -d "${app_env[@]}" --name "$smoke" -e APP_ENV=production "$image" >/dev/null
+docker run -d --network "$network" "${app_env[@]}" --name "$smoke" -e APP_ENV=production "$image" >/dev/null
 wait_health "$smoke" || fail "Published digest failed fresh DB startup/HTTP health check"
-migration_status=$(docker exec "$smoke" php artisan migrate:status --no-ansi)
-[[ -n $migration_status && $migration_status != *Pending* ]] || fail "Smoke database did not finish migrations"
+migrations_ready "$smoke" || fail "Smoke database did not finish migrations"
 (
     umask 077
     set -o noclobber

@@ -14,6 +14,15 @@ tests in disposable MySQL, and then pulls and boots the published digest
 against a fresh database. Failed post-push verification may leave an
 unapproved candidate tag; do not stage it. Only success creates the handoff.
 
+The pre-push gate preserves the consulting hours, fake vendor mail, task bulk
+update and reassignment, client merge balance, and client API snapshot checks
+from successful UI Actions run 45858393855 (backend 173ff5a, UI 98090aa).
+It also retains task rounding and time-log checks. A missing suite or method
+fails closed: the selected backend must carry all these tests. The suite runs
+on the candidate image, with disposable MySQL and an internal network after
+Composer installs test dependencies. Mail uses the array driver and the vendor
+routing test uses Laravel's mail fake; no real mail is sent.
+
 After cutover, manually dispatch **IntegrateCore immutable candidate** with
 the two SHAs. Download the `release-handoff` artifact. The workflow uses the
 backend GitHub token with the contents:read and packages:write scopes already
@@ -39,8 +48,8 @@ review. Never substitute a tag for a digest.
 Backend manual dispatch returned HTTP 422: `Actions has been disabled for
 this repository`. The repository is a public fork; its permission endpoint
 returned enabled=true and allowed_actions=all, and the workflow endpoint
-listed Deploy Dev as active. These settings do not establish that dispatch
-works. The available identity got HTTP 403 for organization Actions policy;
+listed Deploy Dev as active. The fork's Actions tab was independently
+confirmed disabled. Explicit approval to re-enable it remains pending. The available identity got HTTP 403 for organization Actions policy;
 package metadata also returned HTTP 403 requiring read:packages. Do not
 change scope, settings or visibility to work around those responses.
 
@@ -74,9 +83,28 @@ After the current safe release is no longer using staging, run on staging:
     bash scripts/integratecore-release/host.sh staging preflight release-handoff.json
     bash scripts/integratecore-release/host.sh staging apply release-handoff.json
 
-Check login, client portal and changed business flows on staging. Then
-retrieve a fresh receipt directly from staging (not from the builder):
+Staging apply records automatic health and migrations; it does not record
+manual acceptance. On the exact staged digest, a human reviewer must verify
+login, the client portal and the changed workflows with staging test data.
+Keep observations privately under a release-review reference like REL-123.
+Never include passwords, tokens, cookies, screenshots or customer data in
+the JSON. This is a schema example, not a completed record. Replace results
+with "pass" only after actually checking:
 
+    {
+      "image": "ghcr.io/integratecore/invoiceninja@sha256:<exact digest from handoff>",
+      "login": "<result>",
+      "portal": "<result>",
+      "workflows": "<result>",
+      "review": "REL-123"
+    }
+
+Record acceptance on staging, then retrieve a fresh receipt directly from it.
+Receipt creation rechecks live identity, health and migrations, and requires
+matching manual acceptance. Restaging clears acceptance. Transfer the receipt
+as trusted operator evidence, not as a signature:
+
+    bash scripts/integratecore-release/host.sh staging accept release-handoff.json acceptance.json
     bash scripts/integratecore-release/host.sh staging receipt release-handoff.json > staging-receipt.json
 
 After explicit production approval, securely transfer that receipt and the
@@ -100,25 +128,41 @@ data and can be restored. The script saves the existing configuration,
 previous image, and a checked DB dump under `releases/` on the target. Keep
 these private. Do not prune the rollback image or overwrite the dump.
 
-If apply fails or is interrupted, leave the app stopped and consult
-`releases/recovery-required` for the attempt directory. If the candidate
-never started, restart the prior image with the saved rollback override.
-If it reached migration/startup, first decide with the operator whether
-to recover forward or restore the database and persistent storage as a
-matched set. Restoring can discard writes since the dump; never do it
-automatically. After the approved recovery choice, restore saved Compose
-and environment settings and use the saved `rollback.yml` as the canonical
-override to run the retained old image with `--no-deps --no-build --pull never`.
-Check app health, DB state and external flows, then clear the marker. Do not
-clear the marker just to force a retry.
+If apply fails or is interrupted, leave the app stopped and use
+`releases/recovery-required` to locate the attempt. Image rollback and
+database recovery are separate decisions:
+
+1. If `candidate-start-attempted` is absent and the candidate never started,
+   restore the prior Compose and environment settings and run the saved
+   `rollback.yml` override with `--no-deps --no-build --pull never`.
+2. If the start marker exists or startup is uncertain, do not start older
+   code until schema and persistent data compatibility have been verified.
+   Decide separately whether to recover forward or restore the verified
+   database and storage backup as a matched set. Restoration can discard
+   writes; require explicit recovery authorization. Image rollback does not
+   undo migrations. Never auto-restore the database.
+
+Verify app, DB and external flows before clearing the recovery marker.
 
 ## Reviewed cutover only
 
-This branch does not replace or trigger the existing Deploy, Deploy Dev,
-phpunit, React Release or PHP runtime workflows. Before merging/activating
-the design, coordinate with the active release's operator and replace the
-two legacy push-based release triggers in the cutover review (preserving
-workflow names/paths and unrelated CI); otherwise pushes to `dev` or
-`v5-stable` can still run the legacy release. Verify the package
-connection using the existing backend package credential, review both host
-preflights, and test off-server before authorizing any live promotion.
+1. Review this PR and coordinate with the current release operator. Existing
+   Deploy, Deploy Dev, phpunit, React Release and PHP runtime workflows are
+   unchanged. Merging or enabling Actions is not authorized by this review.
+2. In a separately approved cutover, first disable the legacy push deploy
+   workflows and any equivalent hooks. Verify both deploy workflows are
+   disabled and no releases are queued or running. Do not push or merge to
+   any production-triggering branch (including `v5-stable` or `main`), or
+   to `dev` under its staging trigger, while legacy auto-deploy is active.
+   Remove the legacy push triggers in the reviewed cutover, preserving CI
+   names and unrelated workflows.
+3. Verify GitHub's actual default branch. Only after legacy triggers are
+   neutralized, register the candidate workflow on that branch through a
+   reviewed, explicitly approved change. A dev-only file cannot register it
+   for manual dispatch.
+4. Re-enable backend Actions only with separate explicit approval, with no
+   active legacy release triggers. Verify registration and an approved
+   candidate-only dispatch before relying on it. Until then use the
+   off-server fallback with the existing credential and authorized runner.
+   Staging and production remain separate, explicitly authorized digest
+   operations.

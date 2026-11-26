@@ -2,7 +2,7 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-[[ $# -ge 3 ]] || fail "Usage: host.sh staging|production preflight|apply|receipt HANDOFF [STAGING_RECEIPT]"
+[[ $# -ge 3 ]] || fail "Usage: host.sh staging|production preflight|apply|accept|receipt HANDOFF [ACCEPTANCE_OR_RECEIPT]"
 target=$1 action=$2
 read_handoff "$3"
 case "$target" in
@@ -12,13 +12,16 @@ case "$target" in
 esac
 case "$action" in
     preflight|apply) ;;
-    receipt) [[ $target == staging && $# == 3 ]] || fail "Receipt is staging-only" ;;
+    accept|receipt) [[ $target == staging ]] || fail "Acceptance and receipts are staging-only" ;;
     *) fail "Unknown action" ;;
 esac
 if [[ $target == production && $action == apply ]]; then
     [[ $# == 4 ]] || fail "Production requires a staging receipt"
-    jq -e --argjson release "$handoff" '.environment == "staging" and .handoff == $release' "$4" >/dev/null ||
-        fail "Staging did not verify this handoff"
+    validate_receipt "$4" || fail "Production requires matching automated and manual staging evidence"
+elif [[ $action == accept ]]; then
+    [[ $# == 4 ]] || fail "Acceptance requires an operator-completed JSON record"
+    acceptance=$(jq -ces --arg image "$image" 'select(length == 1) | .[0] | select('"$acceptance_filter"')' "$4") ||
+        fail "Invalid acceptance: provide matching digest, three passes and a REL review reference"
 else
     [[ $# == 3 ]] || fail "Unexpected arguments"
 fi
@@ -51,9 +54,28 @@ assert_live() {
         [[ $(docker inspect --format '{{.Config.Image}}' "$app") == "$image" ]] &&
         verify_labels "$image" && healthy "$app"
 }
-if [[ $action == receipt ]]; then
-    [[ -f $release/staging.json ]] && assert_live || fail "Staging is not healthy on this digest"
-    cat "$release/staging.json"
+container_id() { docker inspect --format '{{.Id}}' "$app"; }
+if [[ $action == accept || $action == receipt ]]; then
+    [[ ! -e releases/recovery-required && -f $release/automatic.json ]] &&
+        assert_live && migrations_ready "$app" || fail "Staging has not verified this digest"
+    automatic=$(jq -ce --arg id "$(container_id)" 'select(.container == $id)' "$release/automatic.json") ||
+        fail "Staging container changed; rerun staging apply and recheck acceptance"
+
+    if [[ $action == accept ]]; then
+        pending=$(mktemp "$release/manual.XXXXXXXX")
+        jq -n --argjson automatic "$automatic" --argjson record "$acceptance" \
+            '{automatic:$automatic,record:$record}' > "$pending"
+        mv -T "$pending" "$release/manual.json"
+        echo "Recorded operator acceptance for $image"
+    else
+        [[ -f $release/manual.json ]] || fail "Manual staging acceptance has not been recorded"
+        pending=$(mktemp "$release/receipt.XXXXXXXX")
+        trap 'rm -f "$pending"' EXIT
+        jq -n --argjson handoff "$handoff" --argjson automatic "$automatic" --slurpfile manual "$release/manual.json" \
+            '{version:2,environment:"staging",handoff:$handoff,automatic:$automatic,manual:$manual[0]}' > "$pending"
+        validate_receipt "$pending" || fail "Manual staging acceptance is missing or stale"
+        cat "$pending"
+    fi
     exit
 fi
 
@@ -120,10 +142,9 @@ else
     cp "$backup/override.next.yml" "$override.next"
     mv -T "$override.next" "$override"
     installed=(docker compose --project-name "$project" -f "$base" -f "$override")
+    touch "$backup/candidate-start-attempted"
     "${installed[@]}" up -d --no-deps --no-build --pull never invoiceninja
-    if ! wait_health "$app" || ! assert_live ||
-        ! docker exec "$app" php artisan migrate:status --no-ansi > "$backup/migration-status" ||
-        grep -q Pending "$backup/migration-status"; then
+    if ! wait_health "$app" || ! assert_live || ! migrations_ready "$app"; then
         "${installed[@]}" stop invoiceninja
         fail "New app failed verification; left stopped for recovery"
     fi
@@ -133,9 +154,11 @@ else
 fi
 
 if [[ $target == staging ]]; then
+    migrations_ready "$app" || fail "Staging migrations are not ready"
     mkdir -p "$release"
-    receipt=$(mktemp "$release/staging.XXXXXXXX")
-    jq -n --argjson release "$handoff" --arg checked "$(date -u +%FT%TZ)" \
-        '{environment:"staging",handoff:$release,checked_at:$checked}' > "$receipt"
-    mv -T "$receipt" "$release/staging.json"
+    result=$(mktemp "$release/automatic.XXXXXXXX")
+    jq -n --arg id "$(container_id)" --arg checked "$(date -u +%FT%TZ)" \
+        '{container:$id,checked_at:$checked,health:"pass",migrations:"pass"}' > "$result"
+    mv -T "$result" "$release/automatic.json"
+    rm -f "$release/manual.json"
 fi

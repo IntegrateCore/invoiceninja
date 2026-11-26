@@ -55,3 +55,30 @@ wait_health() {
     done
     return 1
 }
+
+# Only a short review reference is accepted; no free-form notes or credentials.
+acceptance_filter='
+    type == "object" and keys == ["image","login","portal","review","workflows"]
+    and .image == $image
+    and .login == "pass" and .portal == "pass" and .workflows == "pass"
+    and (.review | type == "string" and test("^REL-[0-9]{1,12}$"))
+'
+
+validate_receipt() {
+    jq -es --argjson release "$handoff" --arg image "$image" '
+        length == 1 and (.[0] |
+            .version == 2 and .environment == "staging" and .handoff == $release
+            and (.automatic.container | type == "string" and test("^[0-9a-f]{64}$"))
+            and .automatic.health == "pass" and .automatic.migrations == "pass"
+            and (.automatic.checked_at | type == "string")
+            and .manual.automatic == .automatic
+            and (.manual.record | ('"$acceptance_filter"'))
+        )
+    ' "$1" >/dev/null
+}
+
+migrations_ready() {
+    local status
+    status=$(docker exec "$1" php artisan migrate:status --no-ansi) || return 1
+    [[ $status == *Ran* && $status != *Pending* ]]
+}
