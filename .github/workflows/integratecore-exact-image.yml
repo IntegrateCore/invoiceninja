@@ -1,0 +1,25 @@
+name: Verify exact Invoice Ninja candidate
+on:
+  push:
+    branches:
+      - ci/integratecore-exact-image-20261126
+permissions: {}
+jobs:
+  verify:
+    if: github.repository == 'IntegrateCore/invoiceninja' && github.event_name == 'push' && github.ref == 'refs/heads/ci/integratecore-exact-image-20261126'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/validation/exact-image-smoke.sh
+          sparse-checkout-cone-mode: false
+      - name: Verify identity, normal startup, HTTP and migrations
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: bash .github/validation/exact-image-smoke.sh
