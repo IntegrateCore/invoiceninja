@@ -1,0 +1,53 @@
+name: IntegrateCore immutable candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend_sha:
+        description: Full reviewed backend commit SHA
+        required: true
+        type: string
+      ui_sha:
+        description: Full reviewed public UI commit SHA
+        required: true
+        type: string
+
+concurrency:
+  group: integratecore-immutable-candidate
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: bcmath, gd, imagick, intl, mbstring, pdo_mysql, soap, zip
+          tools: composer:v2
+          coverage: none
+      - name: Build, test, publish and verify digest
+        env:
+          BACKEND_SHA: ${{ inputs.backend_sha }}
+          UI_SHA: ${{ inputs.ui_sha }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: bash scripts/integratecore-release/candidate.sh "$BACKEND_SHA" "$UI_SHA" "$GITHUB_ACTOR" release-handoff.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-handoff
+          path: release-handoff.json
+          if-no-files-found: error
+          retention-days: 30
