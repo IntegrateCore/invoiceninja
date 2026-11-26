@@ -1,0 +1,26 @@
+name: Verify synthetic offline OCI import
+on:
+  push:
+    branches: [ci/integratecore-oci-import-20261126]
+    paths:
+      - .github/workflows/integratecore-oci-import-probe.yml
+permissions: {}
+jobs:
+  probe:
+    if: github.repository == 'IntegrateCore/invoiceninja' && github.event_name == 'push' && github.ref == 'refs/heads/ci/integratecore-oci-import-20261126'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - name: Run the isolated synthetic probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          probe=$(mktemp -d "$RUNNER_TEMP/oci-probe.XXXXXXXX")
+          trap 'sudo rm -rf -- "$probe"' EXIT
+          url="https://raw.githubusercontent.com/IntegrateCore/invoiceninja/$GITHUB_SHA/.github/validation"
+          for script in oci-import-fixture.py oci-import-probe.sh; do
+            curl -q -fsS --max-time 20 "$url/$script" -o "$probe/$script"
+          done
+          bash "$probe/oci-import-probe.sh" "$probe"

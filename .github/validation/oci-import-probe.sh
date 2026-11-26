@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+set -euo pipefail
+work=$1
+umask 077
+curl -q -fsS --max-time 90 https://download.docker.com/linux/static/stable/x86_64/docker-29.1.3.tgz -o "$work/docker.tgz"
+tar -xzf "$work/docker.tgz" -C "$work"
+printf '{}\n' > "$work/daemon.json"
+mkdir -m 700 "$work/client"
+daemon_pid=
+registry_pid=
+registry_name=registry-fixture.invalid
+cert_dir=/etc/docker/certs.d/$registry_name
+cleanup() {
+    if [[ -s "$work/daemon.pid" ]]; then sudo kill "$(cat "$work/daemon.pid")" 2>/dev/null || true; fi
+    if [[ -s "$work/registry.pid" ]]; then sudo kill "$(cat "$work/registry.pid")" 2>/dev/null || true; fi
+    if [[ -n $daemon_pid ]]; then wait "$daemon_pid" || true; fi
+    if [[ -n $registry_pid ]]; then wait "$registry_pid" || true; fi
+    if [[ -e "$work/hosts.original" ]]; then sudo cp "$work/hosts.original" /etc/hosts; fi
+    if [[ -e "$work/cert-installed" ]]; then sudo rm -f "$cert_dir/ca.crt"; sudo rmdir "$cert_dir"; fi
+}
+trap cleanup EXIT
+
+sudo env PATH="$work/docker:$PATH" "$work/docker/dockerd" \
+    --config-file "$work/daemon.json" --host "unix://$work/docker.sock" \
+    --data-root "$work/data" --exec-root "$work/exec" --pidfile "$work/daemon.pid" \
+    --feature containerd-snapshotter=true --bridge none \
+    --iptables=false --ip6tables=false --ip-forward=false --userland-proxy=false \
+    > "$work/daemon.log" 2>&1 &
+daemon_pid=$!
+d() {
+    sudo env DOCKER_CONFIG="$work/client" "$work/docker/docker" --host "unix://$work/docker.sock" "$@"
+}
+for _ in $(seq 1 30); do
+    if d info >/dev/null 2>&1; then break; fi
+    sleep 1
+done
+if ! d version --format '{{json .Server}}' | jq -e '
+    .Version=="29.1.3" and .GitCommit=="fbf3ed2" and .Os=="linux" and .Arch=="amd64"
+    and any(.Components[]; .Name=="containerd" and .Version=="v2.2.1" and .Details.GitCommit=="dea7da592f5d1d2b7755e3a161be07f43fad8f75")
+    and any(.Components[]; .Name=="runc" and .Version=="1.3.4" and .Details.GitCommit=="v1.3.4-0-gd6d73eb8")' >/dev/null; then
+    echo "Exact staging engine/component build did not start or match"
+    d version --format '{{json .Server}}' | jq '{Version,GitCommit,Os,Arch,Components:[.Components[]|{Name,Version,commit:.Details.GitCommit}]}' || true
+    tail -n 12 "$work/daemon.log"
+    exit 1
+fi
+d info --format '{{json .}}' | jq -e '
+    .Driver=="overlayfs" and .CgroupVersion=="2"
+    and any(.DriverStatus[]; .==["driver-type","io.containerd.snapshotter.v1"])' >/dev/null
+echo 'Matched staging Docker 29.1.3, containerd 2.2.1, runc 1.3.4, overlayfs snapshotter, linux/amd64, cgroup v2'
+
+printf '%s\n' 'int main(void) { return 0; }' | gcc -x c -static -s -Os -o "$work/fixture" -
+python3 "$work/oci-import-fixture.py" create "$work"
+repo=$(jq -er .repo "$work/expected.json")
+digest=$(jq -er .manifest "$work/expected.json")
+config=$(jq -er .config "$work/expected.json")
+moved_config=$(jq -er .moved_config "$work/expected.json")
+ref="$repo@$digest"
+identity() {
+    [[ $1 == "$ref" ]] || return 1
+    d image inspect "$1" 2>/dev/null | jq -e --arg ref "$ref" --arg config "$config" '
+        length==1 and .[0].Id==$config and .[0].Os=="linux" and .[0].Architecture=="amd64"
+        and (.[0].RepoDigests | index($ref)!=null)' >/dev/null
+}
+offline=false
+for kind in tag digest; do
+    if d image load -i "$work/oci-$kind.tar" >"$work/load-$kind.log" 2>&1; then
+        if identity "$ref"; then
+            printf 'Docker load (%s descriptor): original repository digest and config preserved\n' "$kind"
+            offline=true
+        else
+            printf 'Docker load (%s descriptor): original repository digest not resolvable with required evidence\n' "$kind"
+        fi
+    else
+        printf 'Docker load (%s descriptor): archive not accepted\n' "$kind"
+        tail -n 3 "$work/load-$kind.log"
+    fi
+done
+
+if [[ $offline == false ]]; then
+    [[ ! -e "$cert_dir" ]]
+    openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=$registry_name" \
+        -addext "subjectAltName=DNS:$registry_name" -keyout "$work/tls.key" -out "$work/tls.crt" >/dev/null 2>&1
+    sudo install -d -m 755 "$cert_dir"
+    touch "$work/cert-installed"
+    sudo install -m 644 "$work/tls.crt" "$cert_dir/ca.crt"
+    cp /etc/hosts "$work/hosts.original"
+    printf '127.0.0.1 %s\n' "$registry_name" | sudo tee -a /etc/hosts >/dev/null
+    sudo sh -c 'echo "$$" > "$1/registry.pid"; exec python3 "$1/oci-import-fixture.py" serve "$1"' sh "$work" &
+    registry_pid=$!
+    for _ in $(seq 1 15); do
+        if curl -q -fsS --noproxy '*' --resolve "$registry_name:443:127.0.0.1" --cacert "$work/tls.crt" \
+            --max-time 2 "https://$registry_name/v2/" >/dev/null 2>&1; then break; fi
+        sleep 1
+    done
+    sudo ss -Hltpn 'sport = :443' | awk '
+        {n++; if ($4 != "127.0.0.1:443") bad=1}
+        END {exit n!=1 || bad}'
+    curl -q -fsS --noproxy '*' --resolve "$registry_name:443:127.0.0.1" --cacert "$work/tls.crt" \
+        --max-time 5 "https://$registry_name/v2/invoiceninja/manifests/$digest" -o "$work/received-manifest"
+    cmp "$work/received-manifest" "$work/layout/blobs/sha256/${digest#sha256:}"
+    test "sha256:$(sha256sum "$work/received-manifest" | cut -d' ' -f1)" = "$digest"
+    d pull --platform linux/amd64 "$ref" >/dev/null
+    identity "$ref"
+    echo 'Loopback TLS registry: received manifest byte-for-byte identical; canonical digest and config resolve'
+    d pull --platform linux/amd64 "$repo:candidate" >/dev/null
+else
+    d image load -i "$work/oci-moved.tar" >/dev/null
+fi
+test "$(d image inspect "$repo:candidate" --format '{{.Id}}')" = "$moved_config"
+echo 'Moved tag resolves to a different config, not the approved digest'
+if identity "$repo:candidate" || identity "$repo:movable"; then
+    echo 'Unexpectedly accepted a movable reference'
+    exit 1
+fi
+echo 'Tag-only evidence rejected'
+
+bad="sha256:$(printf '%064d' 0)"
+if d image inspect "$repo@$bad" >/dev/null 2>&1 || d run --rm --network none --pull never "$repo@$bad" >/dev/null 2>&1; then
+    echo 'Unexpectedly accepted a wrong manifest digest'
+    exit 1
+fi
+identity "$ref"
+cid=$(d create --network none --pull never "$ref")
+d container inspect "$cid" | jq -e --arg config "$config" --arg ref "$ref" '
+    length==1 and .[0].Image==$config and .[0].Config.Image==$ref' >/dev/null
+d start -a "$cid" >/dev/null
+test "$(d container inspect "$cid" --format '{{.State.ExitCode}}')" = 0
+d rm "$cid" >/dev/null
+echo 'Exact repo@digest created and ran with --pull never; runtime image and config identities matched; wrong digest rejected'
