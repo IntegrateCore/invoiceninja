@@ -1,0 +1,25 @@
+name: Isolated combined image validation
+on:
+  push:
+    branches: [ci/combined-validation-20261126]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: bcmath, gd, imagick, intl, mbstring, pdo_mysql, soap, zip
+          tools: composer:v2
+          coverage: none
+      - name: Build and test without publishing or deploying
+        run: bash .github/validation/combined-image.sh
