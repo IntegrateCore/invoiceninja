@@ -21,6 +21,7 @@ use App\Models\Presenters\ClientPresenter;
 use App\Models\Traits\Excludable;
 use App\Models\Traits\HasTags;
 use App\Services\Client\ClientService;
+use App\Utils\AppLink;
 use App\Utils\Traits\AppSetup;
 use App\Utils\Traits\ClientGroupSettingsSaver;
 use App\Utils\Traits\GeneratesCounter;
@@ -197,6 +198,7 @@ class Client extends BaseModel implements HasLocalePreference
         'has_valid_vat_number',
         'classification',
         'consulting_hours_balance',
+        'e_invoice',
     ];
 
     protected $with = [
@@ -490,7 +492,10 @@ class Client extends BaseModel implements HasLocalePreference
 
     public function timezone(): Timezone
     {
-        return Timezone::find($this->getSetting('timezone_id'));
+        /** @var \Illuminate\Support\Collection<Timezone> $timezones */
+        $timezones = app('timezones');
+
+        return $timezones->firstWhere('id', $this->getSetting('timezone_id'));
     }
 
     public function language()
@@ -1111,9 +1116,9 @@ class Client extends BaseModel implements HasLocalePreference
         return ctrans('texts.client');
     }
 
-    public function portalUrl(bool $use_react_url): string
+    public function portalUrl(): string
     {
-        return $use_react_url ? config('ninja.react_url') . "/#/clients/{$this->hashed_id}" : config('ninja.app_url');
+        return AppLink::forRecord('clients', $this);
     }
 
     /**
@@ -1155,6 +1160,10 @@ class Client extends BaseModel implements HasLocalePreference
             return "Client has no country set!";
         }
 
+        if (\App\Services\EDocument\Support\GlnIdentifier::isValid((string) $this->routing_id)) {
+            return null;
+        }
+        
         $country_code = $this->country->iso_3166_2;
 
         $router = new \App\Services\EDocument\Gateway\Storecove\StorecoveRouter();

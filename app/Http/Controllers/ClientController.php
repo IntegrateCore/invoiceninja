@@ -16,6 +16,7 @@ use App\Events\Client\ClientWasCreated;
 use App\Events\Client\ClientWasUpdated;
 use App\Factory\ClientFactory;
 use App\Filters\ClientFilters;
+use App\Http\Controllers\BaseController;
 use App\Http\Requests\Client\BulkClientRequest;
 use App\Http\Requests\Client\ClientDocumentsRequest;
 use App\Http\Requests\Client\CreateClientRequest;
@@ -28,6 +29,7 @@ use App\Http\Requests\Client\ShowClientRequest;
 use App\Http\Requests\Client\StoreClientRequest;
 use App\Http\Requests\Client\UpdateClientRequest;
 use App\Http\Requests\Client\UploadClientRequest;
+use App\Jobs\Client\CheckVat;
 use App\Jobs\Client\UpdateTaxData;
 use App\Jobs\PostMark\ProcessPostmarkWebhook;
 use App\Models\Account;
@@ -56,6 +58,7 @@ use App\Utils\Traits\SavesDocuments;
 use App\Utils\Traits\Uploadable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Postmark\PostmarkClient;
 
@@ -97,11 +100,11 @@ class ClientController extends BaseController
      */
     public function index(ClientFilters $filters)
     {
-        set_time_limit(45);
+        return $this->withinTimeLimit(45, function () use ($filters) {
+            $clients = Client::filter($filters)->with(['tags', 'company']);
 
-        $clients = Client::filter($filters)->with(['tags', 'company']);
-
-        return $this->listResponse($clients);
+            return $this->listResponse($clients);
+        });
     }
 
     /**
@@ -187,6 +190,10 @@ class ClientController extends BaseController
         $user = auth()->user();
 
         $client = ClientFactory::create($user->company()->id, $user->id);
+
+        $settings = $client->settings;
+        $settings->currency_id = (string) $user->company()->settings->currency_id;
+        $client->settings = $settings;
 
         return $this->itemResponse($client);
     }
@@ -461,7 +468,7 @@ class ClientController extends BaseController
 
         try {
 
-            /** @var ?\Postmark\Models\DynamicResponseModel $response */
+            /** @var \Postmark\Models\DynamicResponseModel $response */
             $response = $postmark->activateBounce((int) $bounce_id);
 
             // if ($response && $response?->Message == 'OK' && !$response->Bounce->Inactive && $response->Bounce->Email) { // @phpstan-ignore-line
@@ -532,5 +539,30 @@ class ClientController extends BaseController
     public function showSettings(ShowClientRequest $request, Client $client)
     {
         return response()->json($client->service()->showSettingsMap(), 200);
+    }
+
+    public function peppolDiscovery(ShowClientRequest $request, Client $client)
+    {
+        return response()->json($client->service()->peppolDiscovery(), 200);
+    }
+
+    public function checkVat(ShowClientRequest $request, Client $client)
+    {
+        Cache::put('vat_status_'.$client->client_hash, 'pending', 3600);
+
+        CheckVat::dispatch($client, $client->company);
+
+        return response()->json(['message' => 'success'], 200);
+    }
+
+    public function vatStatus(ShowClientRequest $request, Client $client)
+    {
+        $status = Cache::get('vat_status_'.$client->client_hash);
+
+        if($status != 'pending'){
+            Cache::forget('vat_status_'.$client->client_hash);
+        }
+
+        return response()->json(['message' => $status], 200);
     }
 }

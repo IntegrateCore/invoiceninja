@@ -65,6 +65,7 @@ class BulkTaskRequest extends Request
             $user = auth()->user();
             $unauthorizedTask = Task::withTrashed()
                 ->whereIn('id', $this->transformKeys($this->ids))
+                ->company()
                 ->lazyById(50)
                 ->first(fn (Task $task) => $user->cannot('edit', $task));
 

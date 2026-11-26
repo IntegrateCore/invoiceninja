@@ -24,6 +24,7 @@ use App\Models\RecurringInvoice;
 use App\Models\User;
 use App\Services\Chart\CashFlowForecastService;
 use App\Services\Chart\ClientPaymentAnalyticsService;
+use App\Utils\BcMath;
 
 class ChartService
 {
@@ -32,6 +33,13 @@ class ChartService
     use AnalyticsQueries;
 
     public function __construct(public Company $company, private User $user, private bool $is_admin, private bool $include_drafts = false) {}
+
+    private function companyToday(): string
+    {
+        $timezone = $this->company->timezone()?->name ?: config('app.timezone');
+
+        return now($timezone)->toDateString();
+    }
 
     /**
      * Returns an array of currencies that have
@@ -122,7 +130,7 @@ class ChartService
     /**
      * chart_summary_batched
      *
-     * Reduces N+1 queries @todo additional testing prior to replacing chart_summary
+     * Batches per-currency queries for the chart summary endpoints.
      *
      * @successor-for chart-summary-batched
      * @see chart_summary()
@@ -264,7 +272,76 @@ class ChartService
 
     /* Totals */
 
+    /* Entity Totals */
+
+    /**
+     * entity_totals
+     *
+     * Per currency amount and count of the records in an entity list,
+     * keyed by currency id.
+     *
+     * @param  string $entity
+     * @return array
+     */
+    public function entity_totals(string $entity): array
+    {
+        $totals = match ($entity) {
+            'clients' => $this->getClientTotalsQuery(),
+            'invoices' => $this->getInvoiceTotalsQuery(),
+            'quotes' => $this->getQuoteTotalsQuery(),
+            'credits' => $this->getCreditTotalsQuery(),
+            'payments' => $this->getPaymentTotalsQuery(),
+            'recurring_invoices' => $this->getRecurringInvoiceTotalsQuery(),
+            'purchase_orders' => $this->getPurchaseOrderTotalsQuery(),
+            'expenses' => $this->getExpenseTotalsQuery(),
+            'recurring_expenses' => $this->getRecurringExpenseTotalsQuery(),
+        };
+
+        /** @var \Illuminate\Support\Collection<\App\Models\Currency> */
+        $currencies = app('currencies');
+
+        $data = [];
+
+        foreach ($totals as $total) {
+            $currency_id = (int) $total->effective_currency_id;
+            $precision = $currencies->firstWhere('id', $currency_id)->precision ?? 2;
+
+            $data[$currency_id] = [
+                'amount' => BcMath::round($total->amount ?? 0, $precision),
+                'count' => (int) $total->count,
+            ];
+        }
+
+        return $data;
+    }
+
+    /* Entity Totals */
+
     /* Helpers */
+
+    /**
+     * The amount of an expense with its exclusive taxes added, as the expense lists show it: stored tax amounts when
+     * the taxes are by amount, else each named rate rounded on its own. Rounded to the currency precision, or two places
+     * when it is zero or missing, as the React list does.
+     *
+     * The dashboard expense figure (getExpenseQuery) differs: it adds the stored tax amounts to rate taxes as well.
+     *
+     * @param string $table expenses or recurring_expenses, joined to currencies
+     * @return string
+     */
+    private function expenseAmountWithTax(string $table): string
+    {
+        $precision = 'COALESCE(NULLIF(CAST(currencies.precision AS UNSIGNED), 0), 2)';
+
+        return "CASE
+                WHEN {$table}.uses_inclusive_taxes = 1 THEN {$table}.amount
+                WHEN {$table}.calculate_tax_by_amount = 1 THEN {$table}.amount + COALESCE({$table}.tax_amount1, 0) + COALESCE({$table}.tax_amount2, 0) + COALESCE({$table}.tax_amount3, 0)
+                ELSE {$table}.amount
+                    + IF(COALESCE({$table}.tax_name1, '') = '', 0, ROUND({$table}.amount * COALESCE({$table}.tax_rate1, 0) / 100, {$precision}))
+                    + IF(COALESCE({$table}.tax_name2, '') = '', 0, ROUND({$table}.amount * COALESCE({$table}.tax_rate2, 0) / 100, {$precision}))
+                    + IF(COALESCE({$table}.tax_name3, '') = '', 0, ROUND({$table}.amount * COALESCE({$table}.tax_rate3, 0) / 100, {$precision}))
+            END";
+    }
 
     private function addCurrencyCodes($data_set): array
     {
@@ -302,13 +379,14 @@ class ChartService
     private function distributeChartRows(array &$data, string $metric, array $rows): void
     {
         foreach ($rows as $row) {
-            $currency_id = (int) $row->currency_id;
+            // Batched queries use a distinct alias to avoid grouping by a raw currency_id column.
+            $currency_id = (int) $row->effective_currency_id;
 
             if (! array_key_exists($currency_id, $data)) {
                 continue;
             }
 
-            unset($row->currency_id);
+            unset($row->effective_currency_id);
 
             $data[$currency_id][$metric][] = $row;
         }
@@ -543,6 +621,8 @@ class ChartService
 
     private function firstAnalyticsDate(string $end_date): string
     {
+        $today = $this->companyToday();
+
         return $this->firstDate([
             Invoice::query()
                 ->withTrashed()
@@ -555,15 +635,16 @@ class ChartService
                 ->when(! $this->is_admin, fn ($query) => $query->where('user_id', $this->user->id))
                 ->min('date'),
             Quote::query()
-                ->withTrashed()
                 ->where('company_id', $this->company->id)
                 ->where('is_deleted', false)
                 ->whereIn('status_id', [Quote::STATUS_SENT, Quote::STATUS_APPROVED])
                 ->whereNull('invoice_id')
-                ->where(fn ($query) => $query->whereNull('due_date')->orWhere('due_date', '>=', now()->format('Y-m-d')))
+                ->where(fn ($query) => $query->whereNull('due_date')->orWhere('due_date', '>=', $today))
                 ->where('date', '!=', '0000-00-00')
                 ->where('date', '<=', $end_date)
-                ->whereHas('client', fn ($query) => $query->where('is_deleted', false))
+                ->whereHas('client', fn ($query) => $query
+                    ->whereNull('clients.deleted_at')
+                    ->where('clients.is_deleted', false))
                 ->when(! $this->is_admin, fn ($query) => $query->where('user_id', $this->user->id))
                 ->min('date'),
             RecurringInvoice::query()
@@ -581,6 +662,8 @@ class ChartService
 
     private function firstForecastDate(string $end_date): string
     {
+        $today = $this->companyToday();
+
         return $this->firstDate([
             Invoice::query()
                 ->withTrashed()
@@ -603,14 +686,16 @@ class ChartService
                 ->when(! $this->is_admin, fn ($query) => $query->where('user_id', $this->user->id))
                 ->min('date'),
             Quote::query()
-                ->withTrashed()
                 ->where('company_id', $this->company->id)
                 ->where('is_deleted', false)
                 ->whereIn('status_id', [Quote::STATUS_SENT, Quote::STATUS_APPROVED])
                 ->whereNull('invoice_id')
+                ->where(fn ($query) => $query->whereNull('due_date')->orWhere('due_date', '>=', $today))
                 ->where('date', '!=', '0000-00-00')
                 ->where('date', '<=', $end_date)
-                ->whereHas('client', fn ($query) => $query->where('is_deleted', false))
+                ->whereHas('client', fn ($query) => $query
+                    ->whereNull('clients.deleted_at')
+                    ->where('clients.is_deleted', false))
                 ->when(! $this->is_admin, fn ($query) => $query->where('user_id', $this->user->id))
                 ->min('date'),
             RecurringInvoice::query()

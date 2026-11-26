@@ -19,6 +19,7 @@ return [
         'AD', 'AT', 'BE', 'DK', 'EE', 'FI', 'DE', 'IS',
         'LT', 'LU', 'NL', 'NO', 'PL', 'PT', 'SE', 'IE',
         'FR', 'GR', 'RO', 'SG', 'SI', 'ES', 'GB', 'IT',
+        'HU'
     ],
 
     /*
@@ -66,7 +67,7 @@ return [
         "DK" => ["B+G", "DK:DIGST", "DK:ERST", "DK:DIGST"],
         "EE" => ["B+G", "EE:CC", "EE:VAT", "EE:CC"],
         "ES" => ["B", "", "ES:VAT", "ES:VAT"],
-        "FI" => ["B+G", "FI:OVT", "FI:VAT", "FI:OVT"],
+        "FI" => ["B+G", "FI:OVT2", "FI:VAT", "FI:OVT2"],
         "FR" => [
             ["G", "FR:SIRET", false, "0009:11000201100044"],
             ["B", "FR:SIRENE or FR:SIRET", "FR:VAT", "FR:SIRENE or FR:SIRET"],
@@ -180,6 +181,8 @@ return [
         'DK:DIGST' => '/^(DK)?\d{8}$/i',
         'EE:CC'    => '/^\d{8}$/',
         'FI:OVT'   => '/^\d{12,13}[a-zA-Z0-9]{0,5}$/',
+        'FI:OVT2'  => '/^0037[0-9]{8}[A-Z0-9]{0,5}\z/',
+        'FI:OPID'  => '/^\d{12,13}[a-zA-Z0-9]{0,5}$/',
         'FR:SIRENE' => '/^\d{9}$/',
         'FR:SIRET' => '/^\d{14}$/',
         'NL:KVK'   => '/^\d{8}$/',
@@ -266,6 +269,8 @@ return [
         'DK:DIGST' => 'DK12345678',
         'EE:CC'    => '12345678',
         'FI:OVT'   => '003712345678',
+        'FI:OVT2'  => '003712345678',
+        'FI:OPID'  => '003721291126',
         'FR:SIRENE' => '123456789',
         'FR:SIRET' => '12345678901234',
         'NL:KVK'   => '12345678',
@@ -298,6 +303,7 @@ return [
         'SE:ORGNR'   => '0007',
         'FR:SIRET'   => '0009',
         'FI:OVT'     => '0037',
+        'FI:OVT2'    => '0216',
         'DUNS'       => '0060',
         'GLN'        => '0088',
         'NL:KVK'     => '0106',

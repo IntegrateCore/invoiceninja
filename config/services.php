@@ -70,12 +70,13 @@ return [
         'client_id' => env('APPLE_CLIENT_ID'),
         'client_secret' => env('APPLE_CLIENT_SECRET'),
         'redirect' => env('APPLE_REDIRECT_URI'),
+        'client_ids' => explode(',', env('APPLE_CLIENT_IDS', '')),
     ],
 
     'oidc' => [
-        // Full URL to the identity provider's discovery document, e.g.
-        // https://sso.example.com/application/o/invoiceninja/.well-known/openid-configuration
-        'well_known'     => env('OIDC_WELL_KNOWN', ''),
+        // URL to the identity provider without `/.well-known/openid-configuration` suffix
+        // https://sso.example.com/application/o/invoiceninja
+        'issuer'     => env('OIDC_ISSUER', substr(env('OIDC_WELL_KNOWN', ''), 0, -1 * strlen('/.well-known/openid-configuration'))),
         'client_id'      => env('OIDC_CLIENT_ID', ''),
         'client_secret'  => env('OIDC_CLIENT_SECRET', ''),
         // Fixed callback URL. Must be registered at the IdP.
@@ -83,7 +84,9 @@ return [
         // Space-separated scopes.
         'scopes'         => env('OIDC_SCOPES', 'openid profile email'),
         // Human-readable label used on the Blade login page button.
-        'provider_label' => env('OIDC_PROVIDER_LABEL', 'OIDC'),
+        'provider_label' => env('OIDC_PROVIDER_LABEL', 'Single Sign-On'),
+        // Redirect automatically to OIDC provider on login page.
+        'auto' => env('OIDC_AUTO', false),
     ],
 
     'ses' => [

@@ -241,6 +241,8 @@ class CompanySettings extends BaseSettings
 
     public $bcc_email = ''; //@TODO
 
+    public $disposition_notification_to = '';
+
     public $pdf_email_attachment = false; //@implemented
 
     public $ubl_email_attachment = false; //@implemented
@@ -547,8 +549,11 @@ class CompanySettings extends BaseSettings
 
     public bool $global_tag_inheritance = false;
     public bool $documents_public_by_default = true;
+    public string $hidden_payment_types = ''; //comma separated payment type ids
+    
 
     public static $casts = [
+        'hidden_payment_types' => 'string',
         'documents_public_by_default' => 'bool',
         'global_tag_inheritance' => 'bool',
         'france_reporting_enabled' => 'bool',
@@ -711,6 +716,7 @@ class CompanySettings extends BaseSettings
         'payment_number_counter' => 'int',
         'reply_to_email' => 'string',
         'bcc_email' => 'string',
+        'disposition_notification_to' => 'string',
         'pdf_email_attachment' => 'bool',
         'ubl_email_attachment' => 'bool',
         'email_style' => 'string',
@@ -854,6 +860,54 @@ class CompanySettings extends BaseSettings
         'show_currency_code' => 'bool',
         'website' => 'string',
         'default_task_rate' => 'float',
+
+        // Basic settings available to free hosted accounts.
+        'qr_iban' => 'string',
+        'besr_id' => 'string',
+        'classification' => 'string',
+        'invoice_terms' => 'string',
+        'invoice_footer' => 'string',
+        'quote_terms' => 'string',
+        'quote_footer' => 'string',
+        'credit_terms' => 'string',
+        'credit_footer' => 'string',
+        'purchase_order_terms' => 'string',
+        'purchase_order_footer' => 'string',
+        'documents_public_by_default' => 'bool',
+        'enable_rappen_rounding' => 'bool',
+        'translations' => 'object',
+        'auto_bill_standard_invoices' => 'bool',
+        'auto_bill' => 'string',
+        'auto_bill_date' => 'string',
+        'use_credits_payment' => 'string',
+        'use_unapplied_payment' => 'string',
+        'valid_until' => 'string',
+        'default_expense_payment_type_id' => 'string',
+        'hidden_payment_types' => 'string',
+        'client_manual_payment_notification' => 'bool',
+        'client_online_payment_notification' => 'bool',
+        'send_email_on_mark_paid' => 'bool',
+        'payment_email_all_contacts' => 'bool',
+        'client_portal_allow_over_payment' => 'bool',
+        'client_portal_allow_under_payment' => 'bool',
+        'client_portal_under_payment_minimum' => 'float',
+        'client_initiated_payments' => 'bool',
+        'client_initiated_payments_minimum' => 'float',
+        'payment_flow' => 'string',
+        'unlock_invoice_documents_after_payment' => 'bool',
+        'show_task_item_description' => 'bool',
+        'allow_billable_task_items' => 'bool',
+        'enable_client_portal_tasks' => 'bool',
+        'show_all_tasks_client_portal' => 'string',
+        'task_round_up' => 'bool',
+        'task_round_to_nearest' => 'int',
+        'global_tag_inheritance' => 'bool',
+        'auto_email_invoice' => 'bool',
+        'auto_archive_invoice' => 'bool',
+        'auto_archive_invoice_cancelled' => 'bool',
+        'lock_invoices' => 'string',
+        'auto_convert_quote' => 'bool',
+        'auto_archive_quote' => 'bool',
     ];
 
     /**
