@@ -45,7 +45,7 @@ activate delivery or add an offline import or deploy command.
    tag only TCP 9443 to that inbox node. Check the *effective* policy for broader legacy or wildcard
    access. No SSH (including Tailscale SSH), shell, Docker socket, subnet,
    exit node, production reachability, Funnel, or general network access.
-   The receiver must authenticate TLS and the ephemeral Tailscale peer and
+   The receiver uses private WireGuard transport and must authenticate the ephemeral Tailscale peer and
    verify its tag; do not trust sender-provided headers or reuse an existing
    Serve handler.
 4. **Isolate the inbox.** Run unprivileged, tailnet-only, with one slot,
@@ -94,10 +94,15 @@ lengths, and authorize before reading or sending 100 Continue. Enforce
 read deadlines and a filesystem quota externally as well; synchronous disk
 operations cannot be interrupted by the asyncio body timeout.
 
-The core contains no network adapter. Upstream tsnet Listen, LocalClient and
-WhoIs/CapMap interfaces were checked in source, but no maintained dependency
-was pinned or compiled against, and no actual peer, policy or registration
-was tested. Do not enable a listener on this evidence alone.
+The separate Go draft in scripts/integratecore-release/tsnet-inbox is
+disabled by default. It uses only a dedicated tsnet listener over WireGuard,
+with no public CA, Funnel or host listener. Its startup requires explicit
+enablement, separate non-root paths and an approved archive checksum.
+The Python core remains the local model. No service unit or activation is
+included. Linux Go 1.27.4 and Tailscale v1.104.7 are pinned; isolated tests use
+fake WhoIs peers and never start tsnet. Real peer enforcement still requires
+owner-approved identity, effective tag/capability and port policy, and
+external filesystem quotas. Do not enable it on synthetic evidence alone.
 
 GitHub workflow_dispatch requires registration on the default branch; an
 isolated ref alone does not register it. No active workflow or default-branch
