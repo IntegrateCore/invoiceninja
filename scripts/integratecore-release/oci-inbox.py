@@ -8,7 +8,7 @@ import re
 import secrets
 import stat
 
-CAPABILITY = "https://integratecore.net/cap/oci-image-upload"
+CAPABILITY = "integratecore.net/cap/oci-image-upload"
 SENDER_TAG = "tag:invoiceninja-staging-image-sender"
 DIGEST = re.compile(r"[a-f0-9]{64}")
 MAX_BYTES = 1024**3

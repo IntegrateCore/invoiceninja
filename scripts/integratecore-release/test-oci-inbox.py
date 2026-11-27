@@ -1,5 +1,7 @@
 import asyncio
 import hashlib
+import json
+import re
 from pathlib import Path
 import runpy
 import tempfile
@@ -36,6 +38,24 @@ class InboxTests(unittest.IsolatedAsyncioTestCase):
                        length=len(DATA), read=read)
         return await inbox.receive(**(request | kwargs))
 
+    def test_disabled_grant_matches_both_receivers(self):
+        script_dir = Path(__file__).resolve().parent
+        example = script_dir.parents[1] / "docs/examples/integratecore-oci-handoff.disabled.json"
+        config = json.loads(example.read_text(encoding="utf-8"))
+        sender, capability = module["SENDER_TAG"], module["CAPABILITY"]
+        self.assertIs(config["enabled"], False)
+        self.assertEqual(capability, "integratecore.net/cap/oci-image-upload")
+        self.assertEqual(config["federation_example"]["sender_tag"], sender)
+        self.assertEqual(config["grant_example"], {
+            "src": [sender], "dst": ["tag:invoiceninja-staging-inbox"], "ip": ["tcp:9443"],
+            "app": {capability: [{"version": 1}]},
+        })
+        go = (script_dir / "tsnet-inbox/main.go").read_text(encoding="utf-8")
+        for name, expected in (("senderTag", sender), ("capability", capability)):
+            match = re.search(rf'^const {name} = "([^"]+)"$', go, re.MULTILINE)
+            self.assertIsNotNone(match)
+            self.assertEqual(match[1], expected)
+
     async def test_disabled_and_untrusted_never_read(self):
         async def forbidden(_):
             self.fail("body read before authorization")
@@ -49,6 +69,7 @@ class InboxTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_requires_capability_and_exact_tag(self):
         for caps, tags in (([], [module["SENDER_TAG"]]),
+                           (["https://" + module["CAPABILITY"]], [module["SENDER_TAG"]]),
                            ([module["CAPABILITY"]], [module["SENDER_TAG"], "tag:other"])):
             async def wrong(_):
                 return caps, tags

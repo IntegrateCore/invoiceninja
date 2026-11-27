@@ -58,7 +58,7 @@ func TestUploadEntry(t *testing.T) {
 					if addr != "pipe" { t.Fatalf("wrong identity input: %q", addr) }
 					if tc.fail { return nil, errors.New("lookup failed") }
 					caps := tailcfg.PeerCapMap{}
-					if tc.cap { caps[capability] = nil } else { caps["https://invalid.example/cap"] = nil }
+					if tc.cap { caps[capability] = nil } else { caps["https://"+capability] = nil }
 					return &apitype.WhoIsResponse{Node: &tailcfg.Node{Tags: tc.tags}, CapMap: caps}, nil
 				})
 			var reader io.Reader = strings.NewReader(data)

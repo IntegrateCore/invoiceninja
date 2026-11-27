@@ -18,7 +18,10 @@
   "grant_example": {
     "src": ["tag:invoiceninja-staging-image-sender"],
     "dst": ["tag:invoiceninja-staging-inbox"],
-    "ip": ["tcp:9443"]
+    "ip": ["tcp:9443"],
+    "app": {
+      "integratecore.net/cap/oci-image-upload": [{"version": 1}]
+    }
   },
   "inbox_example": {
     "listen": null,

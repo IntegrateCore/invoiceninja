@@ -85,7 +85,7 @@ public DNS/certs for the private name, subnet forwarding, or host SSH.
 
 For each accepted connection, the adapter must call Server.LocalClient()
 and WhoIs with the socket's actual RemoteAddr. Deny errors, absent node,
-missing exact CapMap key https://integratecore.net/cap/oci-image-upload,
+missing exact CapMap key integratecore.net/cap/oci-image-upload,
 or anything other than the single dedicated sender tag. Never read forwarded
 headers as identity. The owner must separately grant that sender only the
 dedicated receiver port and capability. Restrict header size/time and
@@ -109,10 +109,23 @@ isolated ref alone does not register it. No active workflow or default-branch
 change is included. An eventual owner-approved trigger must still enforce
 the exact repository, event, ref and immutable reviewed workflow revision.
 
+Future owner-approved dummy trial: the exact sender tag with TCP 9443
+and the app capability should receive HTTP 201 for one approved dummy
+upload. With TCP 9443 allowed but the app capability removed from every
+matching grant, the same sender should reach HTTP and receive 403 without
+an upload. Verify TCP to a second port is denied at the network layer using
+a private test endpoint known to be listening. Grants are additive: inspect
+the effective policy for other rules that might independently grant the
+capability or open a port. The scheme-less capability key is matched exactly;
+the example's [{"version": 1}] is a nonempty configuration array and the
+receiver currently authorizes by key presence, not the marker value.
+None of these live policy trials has been run.
+
 Run the synthetic entry-point acceptance with:
 `python3 scripts/integratecore-release/test-oci-inbox.py`.
 
-References: [tsnet source](https://github.com/tailscale/tailscale/blob/main/tsnet/tsnet.go),
+References: [Tailscale app grants](https://tailscale.com/docs/features/access-control/grants/grants-app-capabilities),
+[tsnet source](https://github.com/tailscale/tailscale/blob/main/tsnet/tsnet.go),
 [WhoIs response](https://github.com/tailscale/tailscale/blob/main/client/tailscale/apitype/apitype.go),
 [GitHub dispatch registration](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch).
 

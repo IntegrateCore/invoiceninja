@@ -24,7 +24,7 @@ import (
 )
 
 const senderTag = "tag:invoiceninja-staging-image-sender"
-const capability = "https://integratecore.net/cap/oci-image-upload"
+const capability = "integratecore.net/cap/oci-image-upload"
 const limit = 1 << 30
 
 type peerKey struct{}
