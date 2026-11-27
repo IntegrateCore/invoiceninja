@@ -1,0 +1,35 @@
+{
+  "enabled": false,
+  "federation_example": {
+    "issuer": "https://token.actions.githubusercontent.com",
+    "audience": "<assigned dedicated audience>",
+    "subject": "<exact verified subject>",
+    "claims": {
+      "repository": "IntegrateCore/invoiceninja",
+      "repository_id": "<verified immutable repository id>",
+      "event_name": "<approved non-PR event>",
+      "ref": "<exact owner-controlled ref>",
+      "workflow_ref": "<exact caller workflow and ref>",
+      "workflow_sha": "<exact reviewed caller commit>"
+    },
+    "scope": "auth_keys",
+    "sender_tag": "tag:invoiceninja-staging-image-sender"
+  },
+  "grant_example": {
+    "src": ["tag:invoiceninja-staging-image-sender"],
+    "dst": ["tag:invoiceninja-staging-inbox"],
+    "ip": ["tcp:9443"],
+    "app": {
+      "integratecore.net/cap/oci-image-upload": [{"version": 1}]
+    }
+  },
+  "inbox_example": {
+    "listen": null,
+    "slots": 1,
+    "mode": "0700",
+    "max_blob_bytes": 1073741824,
+    "max_layout_metadata_bytes": 2097152,
+    "allow_readback": false,
+    "auto_import": false
+  }
+}
