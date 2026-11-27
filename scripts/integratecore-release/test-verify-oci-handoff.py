@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 import hashlib
+import os
+import subprocess
+import sys
+import tarfile
 import json
 import runpy
 import tempfile
@@ -9,6 +13,7 @@ from unittest.mock import patch
 
 validator = runpy.run_path(str(Path(__file__).with_name("verify-oci-handoff.py")))
 verify = validator["verify"]
+verify_archive = validator["verify_archive"]
 accept_local = validator["accept_local"]
 check_runtime_evidence = validator["check_runtime_evidence"]
 InvalidHandoff = validator["InvalidHandoff"]
@@ -125,6 +130,59 @@ class HandoffTests(unittest.TestCase):
         self.blob_path(self.layer).write_bytes(b"x")
         with self.assertRaisesRegex(InvalidHandoff, "blob size mismatch"):
             self.check()
+
+    def archive(self, extra=None, format=tarfile.USTAR_FORMAT):
+        target = self.handoff.parent / "sealed.oci.tar"
+        with tarfile.open(target, "w", format=format) as tar:
+            for path in sorted(self.layout.rglob("*")):
+                tar.add(path, arcname=str(path.relative_to(self.layout)), recursive=False)
+            if extra is not None:
+                tar.addfile(extra)
+        return target
+
+    def check_archive(self, archive, checksum=None):
+        digest = checksum or hashlib.sha256(archive.read_bytes()).hexdigest()
+        return verify_archive(archive, digest, self.handoff, self.image, BACKEND, UI, PHP_BASE)
+
+    def test_archive_cli_checks_exact_bytes_and_cleans_scratch(self):
+        archive = self.archive()
+        scratch = self.handoff.parent / "scratch"
+        scratch.mkdir()
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).with_name("verify-oci-handoff.py")),
+             str(archive), str(self.handoff), "--archive-sha256", hashlib.sha256(archive.read_bytes()).hexdigest(),
+             "--image", self.image, "--backend", BACKEND, "--ui", UI, "--php-base", PHP_BASE],
+            env=dict(os.environ, TMPDIR=str(scratch)), capture_output=True, text=True, check=True,
+        )
+        self.assertIn(self.config["digest"], result.stdout)
+        self.assertEqual(list(scratch.iterdir()), [])
+
+    def test_archive_rejects_wrong_checksum_and_corrupt_blob(self):
+        with self.assertRaisesRegex(InvalidHandoff, "archive checksum mismatch"):
+            self.check_archive(self.archive(), "0" * 64)
+        self.blob_path(self.layer).write_bytes(b"x" * self.layer["size"])
+        with self.assertRaisesRegex(InvalidHandoff, "blob digest mismatch"):
+            self.check_archive(self.archive())
+
+    def test_archive_rejects_traversal_duplicates_and_links(self):
+        link = tarfile.TarInfo("blobs/sha256/" + "a" * 64)
+        link.type = tarfile.SYMTYPE
+        link.linkname = "../../outside"
+        for entry, reason in ((tarfile.TarInfo("../escape"), "unexpected archive file"),
+                              (tarfile.TarInfo("oci-layout"), "duplicate"),
+                              (link, "ordinary USTAR")):
+            with self.subTest(name=entry.name):
+                with self.assertRaisesRegex(InvalidHandoff, reason):
+                    self.check_archive(self.archive(entry))
+
+    def test_archive_rejects_pax_and_trailing_data(self):
+        with self.assertRaisesRegex(InvalidHandoff, "ordinary USTAR"):
+            self.check_archive(self.archive(format=tarfile.PAX_FORMAT))
+        archive = self.archive()
+        with archive.open("ab") as stream:
+            stream.write(b"x" * 512)
+        with self.assertRaisesRegex(InvalidHandoff, "trailing archive data"):
+            self.check_archive(archive)
 
     def create_inbox(self, mode=0o700):
         inbox = self.handoff.parent / "inbox"

@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import stat
 import sys
+import tarfile
 import tempfile
 from contextlib import contextmanager
 
@@ -253,15 +254,78 @@ def check_runtime_evidence(inspect_payload, image, config, manifest_bytes, confi
             "runtime manifest does not reference the verified config")
 
 
+def verify_archive(archive, archive_sha256, handoff, image, backend, ui, php_base):
+    """Stream a narrow USTAR envelope into fresh private scratch; never import."""
+    require(re.fullmatch(r"[a-f0-9]{64}", archive_sha256), "invalid approved archive checksum")
+    block = 512
+    directories = {"blobs", "blobs/sha256"}
+    metadata_names = {"oci-layout", "index.json"}
+    blob_name = re.compile(r"blobs/sha256/[a-f0-9]{64}")
+    with opened_file(archive) as (stream, size), tempfile.TemporaryDirectory(prefix="oci-verify-") as scratch:
+        require(2 * block <= size <= 1024**3 and size % block == 0, "invalid archive size")
+        remaining = size
+        checksum = hashlib.sha256()
+
+        def take(count):
+            nonlocal remaining
+            require(count <= remaining, "truncated archive")
+            data = stream.read(count)
+            require(len(data) == count, "truncated archive")
+            remaining -= count
+            checksum.update(data)
+            return data
+
+        layout = Path(scratch) / "layout"
+        (layout / "blobs" / "sha256").mkdir(mode=0o700, parents=True)
+        seen = set()
+        while True:
+            header = take(block)
+            if not any(header):
+                require(not any(take(block)), "invalid archive end marker")
+                require(remaining <= 10240, "excess archive padding")
+                require(not any(take(remaining)) and not stream.read(1), "trailing archive data")
+                break
+            require(header[257:265] == b"ustar\0" + b"00" and header[156:157] in (b"0", b"5"),
+                    "only ordinary USTAR files and directories are accepted")
+            try:
+                member = tarfile.TarInfo.frombuf(header, "ascii", "strict")
+            except (tarfile.HeaderError, UnicodeError) as error:
+                raise InvalidHandoff("invalid USTAR header") from error
+            name = member.name
+            require(name not in seen and len(seen) < LAYER_LIMIT + 6, "duplicate or excess archive member")
+            seen.add(name)
+            if member.isdir():
+                require(name in directories and member.size == 0, "unexpected archive directory")
+                continue
+            require(name in metadata_names or blob_name.fullmatch(name), "unexpected archive file")
+            require(0 < member.size <= remaining, "invalid archive member size")
+            require(name not in metadata_names or member.size <= METADATA_LIMIT, "archive metadata too large")
+            fd = os.open(layout / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as output:
+                left = member.size
+                while left:
+                    chunk = take(min(left, 256 * 1024))
+                    output.write(chunk)
+                    left -= len(chunk)
+            require(not any(take(-member.size % block)), "nonzero member padding")
+        require(checksum.hexdigest() == archive_sha256, "archive checksum mismatch")
+        return verify(layout, handoff, image, backend, ui, php_base)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("layout")
+    parser.add_argument("layout", help="OCI layout directory, or USTAR archive with --archive-sha256")
+    parser.add_argument("--archive-sha256", help="independently approved archive SHA-256 in lowercase hex")
     parser.add_argument("handoff", help="independently obtained trusted release handoff")
     for option in ("image", "backend", "ui", "php-base"):
         parser.add_argument("--" + option, required=True)
     args = parser.parse_args()
     try:
-        config = verify(args.layout, args.handoff, args.image, args.backend, args.ui, args.php_base)
+        pins = (args.handoff, args.image, args.backend, args.ui, args.php_base)
+        if args.archive_sha256 is None:
+            config = verify(args.layout, *pins)
+        else:
+            config = verify_archive(args.layout, args.archive_sha256, *pins)
     except InvalidHandoff as error:
         sys.exit(f"OCI handoff rejected: {error}")
     except (OSError, ValueError, TypeError, RecursionError):

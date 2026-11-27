@@ -144,6 +144,28 @@ files and tag-only or mismatched runtime evidence. It does not listen,
 contact a registry, or import images. Do not extract untrusted archives or
 recompress layers; the OCI index is only a pointer to the original manifest.
 
+### Verify a sealed inbox archive (no import)
+
+Use the same verifier with the sealed tar as its first argument, the trusted
+handoff as its second, and the independently approved pins and archive hash:
+
+    python3 scripts/integratecore-release/verify-oci-handoff.py sealed.oci.tar HANDOFF.json \
+      --archive-sha256 ARCHIVE_HEX --image REPO@DIGEST --backend SHA --ui SHA --php-base DIGEST
+
+The accepted envelope is uncompressed USTAR, at most 1 GiB, with only
+oci-layout, index.json, optional blobs and blobs/sha256 directories, and
+ordinary blobs/sha256/<hex> files. It excludes extended headers, links,
+duplicates and unrelated files. The verifier streams into new private
+scratch, checks the independent archive SHA-256 and the original OCI content
+and provenance, then removes the scratch. It never rewrites, imports, or
+deploys an image. Reserve up to 1 GiB of private scratch per verification.
+
+Pending, after separate authorization: determine the real private
+candidate's registry media type from trusted metadata and run a disposable
+same-media-type export/import and full repository@digest, manifest, config
+and layer identity check. The prior synthetic import and this bridge
+neither establish the candidate's media type nor prove its end-to-end path.
+
 ### Verified offline import candidate
 
 [Run 45909090809, job 140212838187](https://github.com/IntegrateCore/invoiceninja/actions/runs/45909090809/job/140212838187)
